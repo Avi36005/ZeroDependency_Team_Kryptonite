@@ -1,0 +1,18 @@
+{
+  "name": "depx",
+  "version": "0.1.0",
+  "description": "Dependency x-ray. Finds imports that resolve to nothing, across 10 languages. Zero dependencies.",
+  "type": "module",
+  "bin": {
+    "depx": "./bin/depx.mjs"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "test": "node --test",
+    "depx": "node bin/depx.mjs"
+  },
+  "license": "MIT",
+  "dependencies": {}
+}
