@@ -1,22 +1,22 @@
 $ make test
 ▶ minified detection needs more than one long line
-  ✔ an inline SVG path does not read as minified (1.83825ms)
-  ✔ several long class strings do not read as minified (0.976416ms)
-  ✔ a genuinely minified file is still caught (0.693334ms)
-✔ minified detection needs more than one long line (3.598042ms)
+  ✔ an inline SVG path does not read as minified (1.697583ms)
+  ✔ several long class strings do not read as minified (0.877667ms)
+  ✔ a genuinely minified file is still caught (0.649125ms)
+✔ minified detection needs more than one long line (3.333041ms)
 ▶ gitignore matcher
-  ✔ matches a bare name at any depth (7.90575ms)
-  ✔ anchors a pattern containing a slash (2.071167ms)
-  ✔ applies a directory-only pattern only to directories (2.159125ms)
-  ✔ lets a later negation re-include a file, as git does (2.342958ms)
-  ✔ supports a double-star wildcard (1.5865ms)
-  ✔ ignores blank lines and comments (1.255584ms)
-✔ gitignore matcher (18.276625ms)
+  ✔ matches a bare name at any depth (7.620042ms)
+  ✔ anchors a pattern containing a slash (2.496958ms)
+  ✔ applies a directory-only pattern only to directories (1.363875ms)
+  ✔ lets a later negation re-include a file, as git does (1.758959ms)
+  ✔ supports a double-star wildcard (1.621ms)
+  ✔ ignores blank lines and comments (1.241458ms)
+✔ gitignore matcher (17.435833ms)
 ▶ display width
-  ✔ ignores ANSI escapes (0.139458ms)
-  ✔ counts wide characters as two columns (0.078459ms)
-  ✔ aligns columns using display width, not string length (0.147625ms)
-✔ display width (0.478042ms)
+  ✔ ignores ANSI escapes (0.135209ms)
+  ✔ counts wide characters as two columns (0.074917ms)
+  ✔ aligns columns using display width, not string length (0.15175ms)
+✔ display width (0.492125ms)
 ℹ tests 174
 ℹ suites 46
 ℹ pass 174
@@ -24,4 +24,4 @@ $ make test
 ℹ cancelled 0
 ℹ skipped 0
 ℹ todo 0
-ℹ duration_ms 3179.324917
+ℹ duration_ms 3215.591583

@@ -27,26 +27,7 @@ const MAX_SOURCE_BYTES = 2 * 1024 * 1024;
 
 export async function analyze(root, options = {}) {
   const { include = null, maxBytes = MAX_SOURCE_BYTES } = options;
-  let absRoot = resolvePath(root);
-
-  // Pointing depx at a single file is a legitimate ask; analyse that file
-  // against the manifest of the directory it lives in.
-  let rootStat;
-  try {
-    rootStat = await stat(absRoot);
-  } catch {
-    throw new Error(`path does not exist: ${root}`);
-  }
-  let singleFile = null;
-  if (rootStat.isFile()) {
-    const dir = dirname(absRoot);
-    // Judge the file against its project's manifest, not whatever directory
-    // it happens to sit in - `depx src/deep/a.js` should still see the
-    // package.json at the repo root.
-    const projectRoot = (await findManifestRoot(dir)) ?? dir;
-    singleFile = { path: absRoot, rel: relativePath(projectRoot, absRoot) };
-    absRoot = projectRoot;
-  }
+  const { absRoot, singleFile } = await resolveTarget(root);
 
   /** @type {Map<string, {lang: any, files: string[], imports: Map<string, Array>, relatives: Array, locals: Set<string>}>} */
   const byLanguage = new Map();
@@ -86,37 +67,7 @@ export async function analyze(root, options = {}) {
     const bucket = getBucket(byLanguage, lang);
     bucket.files.push(file.rel);
     filesScanned++;
-
-    // Names this repository defines for itself - `mod utils;` in Rust, a
-    // sibling utils.py in Python - are never dependencies, however much an
-    // import of them looks like one.
-    if (lang.localModulesFromPath) {
-      for (const name of lang.localModulesFromPath(file.rel)) {
-        bucket.locals.add(canonical(lang, lang.normalize(name) ?? name));
-      }
-    }
-    if (lang.scanLocals) {
-      for (const name of lang.scanLocals(source)) {
-        bucket.locals.add(canonical(lang, lang.normalize(name) ?? name));
-      }
-    }
-
-    for (const imp of lang.scanImports(source)) {
-      const site = { file: file.rel, path: file.path, line: imp.line, column: imp.column, kind: imp.kind };
-      const pkg = lang.normalize(imp.specifier);
-
-      if (pkg === null) {
-        // Relative or standard library. Only relative paths can be broken.
-        if (isRelative(imp.specifier)) {
-          bucket.relatives.push({ ...site, specifier: imp.specifier });
-        }
-        continue;
-      }
-
-      const key = canonical(lang, pkg);
-      if (!bucket.imports.has(key)) bucket.imports.set(key, { name: pkg, sites: [] });
-      bucket.imports.get(key).sites.push(site);
-    }
+    ingest(bucket, lang, file, source);
   }
 
   const warnings = [];
@@ -163,6 +114,70 @@ export async function analyze(root, options = {}) {
   };
 }
 
+/**
+ * Work out what is actually being analysed, and from which root.
+ *
+ * Pointing depx at a single file is a legitimate ask, and that file has to be
+ * judged against its *project's* manifest rather than whatever directory it
+ * happens to sit in - `depx src/deep/a.js` should still see the package.json
+ * at the repository root.
+ *
+ * @returns {Promise<{absRoot: string, singleFile: {path: string, rel: string}|null}>}
+ */
+async function resolveTarget(root) {
+  const absPath = resolvePath(root);
+  let rootStat;
+  try {
+    rootStat = await stat(absPath);
+  } catch {
+    throw new Error(`path does not exist: ${root}`);
+  }
+  if (!rootStat.isFile()) return { absRoot: absPath, singleFile: null };
+
+  const dir = dirname(absPath);
+  const projectRoot = (await findManifestRoot(dir)) ?? dir;
+  return {
+    absRoot: projectRoot,
+    singleFile: { path: absPath, rel: relativePath(projectRoot, absPath) },
+  };
+}
+
+/**
+ * Fold one source file into its language bucket: the modules it defines, and
+ * the packages and relative paths it imports.
+ */
+function ingest(bucket, lang, file, source) {
+  // Names this repository defines for itself - `mod utils;` in Rust, a
+  // sibling utils.py in Python - are never dependencies, however much an
+  // import of them looks like one.
+  const addLocal = (name) => bucket.locals.add(canonical(lang, lang.normalize(name) ?? name));
+  for (const name of lang.localModulesFromPath?.(file.rel) ?? []) addLocal(name);
+  for (const name of lang.scanLocals?.(source) ?? []) addLocal(name);
+
+  for (const imp of lang.scanImports(source)) {
+    const site = {
+      file: file.rel,
+      path: file.path,
+      line: imp.line,
+      column: imp.column,
+      kind: imp.kind,
+    };
+    const pkg = lang.normalize(imp.specifier);
+
+    if (pkg === null) {
+      // Relative or standard library. Only relative paths can be broken.
+      if (isRelative(imp.specifier)) {
+        bucket.relatives.push({ ...site, specifier: imp.specifier });
+      }
+      continue;
+    }
+
+    const key = canonical(lang, pkg);
+    if (!bucket.imports.has(key)) bucket.imports.set(key, { name: pkg, sites: [] });
+    bucket.imports.get(key).sites.push(site);
+  }
+}
+
 function getBucket(map, lang) {
   if (!map.has(lang.id)) {
     map.set(lang.id, { lang, files: [], imports: new Map(), relatives: [], locals: new Set() });
@@ -185,8 +200,10 @@ function canonical(lang, name) {
 async function classify(root, bucket, { wholeProject = true } = {}) {
   const { lang, imports, relatives, locals } = bucket;
   const manifest = await lang.readManifest(root);
-  const findings = [];
 
+  // Every name the manifest mentions, folded the way its registry folds them.
+  // `declared` spans dev, optional and peer too: an import satisfied by a dev
+  // dependency is declared, even though only runtime entries can be dead.
   const declared = new Set();
   const declaredOriginal = new Map();
   for (const set of [manifest?.declared, manifest?.dev, manifest?.optional, manifest?.peer]) {
@@ -197,86 +214,96 @@ async function classify(root, bucket, { wholeProject = true } = {}) {
     }
   }
   const runtimeDeclared = new Set([...(manifest?.declared ?? [])].map((n) => canonical(lang, n)));
+  const nameFor = (key) => declaredOriginal.get(key) ?? key;
 
-  // ---- imports that do not resolve ----
-  //
-  // How strong a claim we can make depends on what evidence is available.
-  // A missing import is only provably a ghost when we can see the whole
-  // resolution universe: either the manifest is authoritative (Go will not
-  // compile an import absent from go.mod) or an install tree is on disk to
-  // check against. With neither, an undeclared import might simply be a real
-  // package nobody has installed here, so we say 'undeclared' and mean it.
-  if (ghostCapable(lang)) {
-    // An adapter can enumerate its install tree in one pass (Python's
-    // site-packages); otherwise existence is probed per name (node_modules).
-    //
-    // Where an adapter enumerates, its answer is the whole answer. Falling
-    // back to "does a .venv directory exist" would treat an empty or
-    // half-built virtualenv as proof of what is installed, and every
-    // undeclared import would be promoted to a ghost on the strength of a
-    // directory that contains nothing.
-    const installedSet = lang.findInstalled ? await lang.findInstalled(root) : null;
-    const hasTree = lang.findInstalled
-      ? installedSet !== null
-      : await hasInstallTree(root, lang);
-    for (const [key, entry] of imports) {
-      if (declared.has(key)) continue;
-      if (locals.has(key)) continue;
-      if (isSelfImport(manifest, entry.name)) continue;
-      const installed =
-        hasTree &&
-        (installedSet
-          ? installedSet.has(key)
-          : await isInstalled(root, lang, entry.name));
-      const provable = lang.manifestIsComplete === true || hasTree;
+  const findings = [
+    ...(await findUnresolved(root, { lang, imports, locals, manifest, declared })),
+    ...findUnused(lang, { imports, runtimeDeclared, nameFor, manifest, wholeProject }),
+    ...findReplaceable(lang, { imports, runtimeDeclared, nameFor }),
+    ...(await findBroken(lang, relatives)),
+  ];
 
-      findings.push({
-        type: installed ? 'phantom' : provable ? 'ghost' : 'undeclared',
-        language: lang.id,
-        name: entry.name,
-        sites: entry.sites,
-        detail: installed
-          ? 'present in the install tree but absent from the manifest'
-          : provable
-            ? lang.manifestIsComplete
-              ? 'absent from the manifest, which is authoritative for this language'
-              : 'absent from both the manifest and the install tree'
-            : 'not declared, and no install tree here to check against',
-      });
-    }
+  return { lang, files: bucket.files, manifest, findings, importCount: imports.size };
+}
+
+/**
+ * Imports that nothing resolves.
+ *
+ * How strong a claim we can make depends on the evidence available. A missing
+ * import is only judged when the whole resolution universe is visible: either
+ * the manifest is authoritative (Go will not compile an import absent from
+ * go.mod) or an install tree is on disk to check against. With neither, an
+ * undeclared import might simply be a real package nobody installed here.
+ */
+async function findUnresolved(root, { lang, imports, locals, manifest, declared }) {
+  if (!ghostCapable(lang)) return [];
+
+  // An adapter that can enumerate its install tree is trusted alone. Falling
+  // back to "does a .venv directory exist" would treat an empty virtualenv as
+  // proof of what is installed, and promote every undeclared import to a
+  // ghost on the strength of a directory containing nothing.
+  const installedSet = lang.findInstalled ? await lang.findInstalled(root) : null;
+  const hasTree = lang.findInstalled ? installedSet !== null : await hasInstallTree(root, lang);
+  const provable = lang.manifestIsComplete === true || hasTree;
+
+  const findings = [];
+  for (const [key, entry] of imports) {
+    if (declared.has(key) || locals.has(key)) continue;
+    if (isSelfImport(manifest, entry.name)) continue;
+
+    const installed =
+      hasTree && (installedSet ? installedSet.has(key) : await isInstalled(root, lang, entry.name));
+
+    findings.push({
+      language: lang.id,
+      name: entry.name,
+      sites: entry.sites,
+      ...verdict({ installed, provable, authoritative: lang.manifestIsComplete === true }),
+    });
   }
+  return findings;
+}
 
-  // ---- declared but never imported ----
-  //
-  // Only claimed where import names map soundly to package names. For tier 3
-  // a Maven coordinate never literally matches an import namespace, so "dead"
-  // would fire on every declared dependency - confident nonsense, suppressed
-  // for the same reason ghosts are.
-  if (manifest && ghostCapable(lang) && wholeProject) {
-    for (const key of runtimeDeclared) {
-      if (imports.has(key)) continue;
-      const name = declaredOriginal.get(key) ?? key;
-      const sub = substitutionFor(lang.id, name);
-      const tooling = toolingReason(lang.id, name);
-      findings.push({
-        type: 'dead',
-        language: lang.id,
-        name,
-        sites: [],
-        expected: tooling !== null,
-        detail: tooling
-          ? tooling
-          : sub
-            ? `unused, and ${sub.use} replaces it anyway`
-            : 'declared but no import of it was found',
-      });
-    }
+/**
+ * Declared, but never imported.
+ *
+ * Only claimed where import names map soundly to package names. For tier 3 a
+ * Maven coordinate never literally matches an import namespace, so this would
+ * fire on every declared dependency - confident nonsense, suppressed for the
+ * same reason ghosts are. Withheld for a single-file run too, where the files
+ * that might import something were never read.
+ */
+function findUnused(lang, { imports, runtimeDeclared, nameFor, manifest, wholeProject }) {
+  if (!manifest || !ghostCapable(lang) || !wholeProject) return [];
+
+  const findings = [];
+  for (const key of runtimeDeclared) {
+    if (imports.has(key)) continue;
+    const name = nameFor(key);
+    const tooling = toolingReason(lang.id, name);
+    const sub = substitutionFor(lang.id, name);
+    findings.push({
+      type: 'dead',
+      language: lang.id,
+      name,
+      sites: [],
+      expected: tooling !== null,
+      detail:
+        tooling ??
+        (sub
+          ? `unused, and ${sub.use} replaces it anyway`
+          : 'declared but no import of it was found'),
+    });
   }
+  return findings;
+}
 
-  // ---- declared, used, and replaceable by the standard library ----
+/** Declared, used, and already present in the standard library. */
+function findReplaceable(lang, { imports, runtimeDeclared, nameFor }) {
+  const findings = [];
   for (const key of runtimeDeclared) {
     if (!imports.has(key)) continue;
-    const name = declaredOriginal.get(key) ?? key;
+    const name = nameFor(key);
     const sub = substitutionFor(lang.id, name);
     if (!sub) continue;
     findings.push({
@@ -289,8 +316,12 @@ async function classify(root, bucket, { wholeProject = true } = {}) {
       note: sub.note,
     });
   }
+  return findings;
+}
 
-  // ---- relative imports pointing nowhere ----
+/** Relative imports pointing at no file on disk. */
+async function findBroken(lang, relatives) {
+  const findings = [];
   for (const rel of relatives) {
     if (await resolvesLocally(rel.path, rel.specifier, lang)) continue;
     findings.push({
@@ -301,8 +332,39 @@ async function classify(root, bucket, { wholeProject = true } = {}) {
       detail: 'relative import does not resolve to a file on disk',
     });
   }
+  return findings;
+}
 
-  return { lang, files: bucket.files, manifest, findings, importCount: imports.size };
+/**
+ * Name the finding, and say what the evidence was.
+ *
+ * Three independent facts decide this - whether the package is installed,
+ * whether the resolution universe is fully visible, and whether the manifest
+ * is authoritative for the language - and reading them off a table keeps the
+ * type and its justification from drifting apart.
+ *
+ * @param {{installed: boolean, provable: boolean, authoritative: boolean}} evidence
+ * @returns {{type: string, detail: string}}
+ */
+function verdict({ installed, provable, authoritative }) {
+  if (installed) {
+    return {
+      type: 'phantom',
+      detail: 'present in the install tree but absent from the manifest',
+    };
+  }
+  if (!provable) {
+    return {
+      type: 'undeclared',
+      detail: 'not declared, and no install tree here to check against',
+    };
+  }
+  return {
+    type: 'ghost',
+    detail: authoritative
+      ? 'absent from the manifest, which is authoritative for this language'
+      : 'absent from both the manifest and the install tree',
+  };
 }
 
 /**
