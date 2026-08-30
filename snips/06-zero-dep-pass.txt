@@ -1,0 +1,9 @@
+$ depx zero-dep .
+
+  Zero Dependency rule check
+
+  PASS  package.json  no runtime dependencies
+
+  empty manifest verified, no vendored source detected
+$ echo $?
+0

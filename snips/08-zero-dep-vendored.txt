@@ -1,0 +1,19 @@
+$ depx zero-dep snips/fixtures/faked-zero-dep
+
+  Zero Dependency rule check
+
+  PASS  package.json  no runtime dependencies
+
+  REVIEW  source that does not read as hand-written
+    src/bundle.js    :2
+                           carries a source map comment, which a build tool emits and a person does not write
+                           packs 904 characters onto one line and averages 313 per line, which means minified or bundled output
+    src/vendored.js  :3
+                           carries a full third-party licence header, which is what copied library source looks like
+
+  Signals, not proof. Vendored source must be disclosed in STDLIB.md;
+  undisclosed, it scores against you.
+
+  empty manifest verified - 2 files to review
+$ echo $?
+0

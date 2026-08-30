@@ -1,0 +1,15 @@
+$ depx langs
+
+  SUPPORTED LANGUAGES
+    JavaScript / TypeScript  tier 1  full ghost detection
+    Python                   tier 1  full ghost detection
+    Go                       tier 1  full ghost detection
+    Rust                     tier 2  full ghost detection
+    Ruby                     tier 2  full ghost detection
+    Java / Kotlin            tier 3  import namespaces do not map to Maven coordinates without a registry index
+    C#                       tier 3  using directives do not map to NuGet package ids without a registry index
+    PHP                      tier 3  PSR-4 namespaces map to Composer packages only via an installed vendor/ tree
+    C / C++                  tier 3  no dependency manifest exists; #include resolves against compiler search paths
+
+$ echo $?
+0

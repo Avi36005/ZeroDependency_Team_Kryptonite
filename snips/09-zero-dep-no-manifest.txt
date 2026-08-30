@@ -1,0 +1,11 @@
+$ depx zero-dep .
+
+  Zero Dependency rule check
+
+  FAIL  requirements.txt  missing  1 Python file present
+
+    add an empty requirements.txt so the empty manifest is verifiable on sight
+
+  this repository would not pass the rule
+$ echo $?
+1
