@@ -1,0 +1,5 @@
+# Resolved by our build step; the import is deliberate.
+optional-native-addon
+
+# Loaded by the framework - still tell us if it disappears from the manifest.
+dead:react-dom

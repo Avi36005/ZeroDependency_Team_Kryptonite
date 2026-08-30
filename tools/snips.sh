@@ -40,6 +40,7 @@ snip 10-monorepo.txt check snips/fixtures/monorepo
 snip 11-help.txt --help
 snip 12-realistic-app.txt check snips/fixtures/realistic-app
 snip 13-single-file.txt check fixtures/messy/src/app.js
+snip 19-depxignore.txt check snips/fixtures/suppressed
 
 # The no-manifest case has to be a Python file with no requirements.txt.
 # Committing one would make this repo fail its own zero-dep check, so it is

@@ -133,7 +133,7 @@ would not be safe in a Track B submission.
 
 **Where:** [`test/`](test/)
 
-159 tests across 42 suites, using `describe`/`test` and strict assertions. No
+170 tests across 45 suites, using `describe`/`test` and strict assertions. No
 config file, no transform step, no watch-mode dependency. `npm test` runs
 `node --test`.
 
@@ -181,7 +181,27 @@ by a small comment lexer. That is more precise than scanning raw source, and
 it is the reason the detector does not flag itself — its own patterns live in
 its code, not its prose. There is a test for exactly that.
 
-## 14. `semver` → not needed at all
+## 14. `ignore` / `minimatch` / `cosmiconfig` → `src/ignore.mjs`
+
+**Where:** [`src/ignore.mjs`](src/ignore.mjs)
+
+Reading a dotfile of suppression rules is where a tool normally acquires
+three dependencies at once: a config loader to find the file, a glob library
+to match names, and an ignore library to apply precedence.
+
+The file is a list of lines. Two forms - `name` and `type:name` - with `*` and
+`?` globbing inside the name and `#` starting a comment. Everything else in a
+package name, including the `.`, `-`, `@` and `/` that fill real ones, is
+matched literally, which is a four-line pattern-to-RegExp translation rather
+than a matcher library.
+
+The design decision worth recording is that suppression is never silent: the
+count of what a rule removed is reported even when the findings are not, so a
+reader can tell a clean repository from a well-configured one. A hidden
+finding is worse than a reported one, because nobody can audit what they
+cannot see.
+
+## 15. `semver` → not needed at all
 
 Worth recording as a substitution *avoided*. We report the version string a
 manifest declares but never compare ranges, so the dependency never became

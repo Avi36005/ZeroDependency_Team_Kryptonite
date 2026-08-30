@@ -173,6 +173,9 @@ function toJson(result, only = null) {
     // or a CI consumer never learns why a result looked surprising.
     warnings: result.warnings ?? [],
     skippedProjects: result.skippedProjects ?? [],
+    // What .depxignore removed, so a reviewer can audit the suppressions
+    // rather than take them on trust.
+    suppressed: (result.suppressed ?? []).map((f) => ({ type: f.type, name: f.name })),
     languages: result.languages.map((l) => ({
       id: l.lang.id,
       name: l.lang.name,

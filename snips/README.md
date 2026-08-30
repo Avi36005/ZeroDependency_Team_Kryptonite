@@ -36,7 +36,8 @@ does not. Every other tool in this category stops at the manifest.
 |---|---|
 | [10-monorepo.txt](10-monorepo.txt) | nested projects named rather than silently skipped |
 | [13-single-file.txt](13-single-file.txt) | one file judged against its project's manifest, found by walking up |
-| [14-json.txt](14-json.txt) | `--json` for CI, including warnings and skipped projects |
+| [19-depxignore.txt](19-depxignore.txt) | `.depxignore` suppressing two findings while two real ones still report |
+| [14-json.txt](14-json.txt) | `--json` for CI, including warnings, suppressions and skipped projects |
 | [07-langs.txt](07-langs.txt) | ten languages and the tier each is detected at |
 | [11-help.txt](11-help.txt) | the help text |
 
@@ -60,6 +61,8 @@ directory you can point `depx` at yourself:
   invented package, two stdlib-replaceable dependencies, one stale dependency
   and three that a build tool loads
 - `monorepo/` — a root with two packages under it
+- `suppressed/` — a project with a `.depxignore` recording two deliberate
+  decisions, alongside two findings it does not suppress
 
 The no-manifest demo in `09` is generated into a temp directory at capture
 time rather than committed. It has to be a Python file with no

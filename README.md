@@ -19,6 +19,7 @@ dependency manifest.
 - [Quick start](#quick-start)
 - [Usage](#usage)
 - [Findings](#findings)
+- [Suppressing findings](#suppressing-findings)
 - [Language support](#language-support)
 - [Verifying the Zero Dependency rule](#verifying-the-zero-dependency-rule)
 - [Limitations](#limitations)
@@ -220,9 +221,14 @@ The exit code makes `depx` usable as a build gate:
 depx ghosts . --quiet || exit 1
 ```
 
-`--json` exposes the full result, including warnings and any nested projects
-that were not descended into, so a CI consumer can explain a surprising
-outcome without parsing the report.
+`--json` exposes the full result, including warnings, suppressed findings and
+any nested projects that were not descended into, so a CI consumer can explain
+a surprising outcome without parsing the report.
+
+This repository's own workflow, [`.github/workflows/ci.yml`](.github/workflows/ci.yml),
+runs the four commands a reviewer would run by hand — the test suite, the
+zero-dependency self-check, the reproducible build, and `depx` against its own
+source — using the runner's Node and installing nothing.
 
 ---
 
@@ -284,6 +290,50 @@ root legitimately contains no source of its own:
 
 Cargo and npm workspaces behave the same way. Run `depx` once per package;
 workspace linking is not resolved.
+
+---
+
+## Suppressing findings
+
+Some findings are correct but unwanted: a plugin resolved at runtime, a
+package a build step injects, an alias `depx` cannot see. Without a way to
+record those decisions, one intentional finding keeps a build red forever and
+the tool gets removed from CI rather than argued with.
+
+Create a `.depxignore` file at the project root:
+
+```
+# a native addon our build step resolves; the import is deliberate
+optional-native-addon
+
+# only the dead finding for this one - still report it if it goes missing
+dead:react-dom
+
+# * and ? glob within a name
+undeclared:@acme/*
+```
+
+| Form | Effect |
+|---|---|
+| `name` | suppress every finding for that package |
+| `type:name` | suppress only that finding type, where `type` is one of the six above |
+| `#` | comment; blank lines are ignored |
+
+Only `*` and `?` are special. Everything else in a name — including the `.`,
+`-`, `@` and `/` that fill real package names — matches literally, and
+matching is anchored at both ends.
+
+**Suppression is never silent.** The number of findings a rule removed is
+always reported, and `--json` lists them by name and type, so a reviewer can
+audit the suppressions rather than take them on trust:
+
+```
+  1 undeclared / 1 dead
+  3 findings suppressed by .depxignore
+```
+
+A repository whose findings are all suppressed reports `nothing to report
+outside .depxignore`, not `clean`.
 
 ---
 
@@ -423,8 +473,8 @@ byte-identical across runs:
 
 ```
 $ make verify
-build 1: c95ba6d4ff0208b2cc63818c1f75303dce38f51b6db6a7aa326b9203168f266b
-build 2: c95ba6d4ff0208b2cc63818c1f75303dce38f51b6db6a7aa326b9203168f266b
+build 1: b9f58e2ab18ecd14ce38236f7b559327446691a1bc24560ce0884e46ff5d6865
+build 2: b9f58e2ab18ecd14ce38236f7b559327446691a1bc24560ce0884e46ff5d6865
 reproducible: byte-identical
 bundle matches source tree
 ```
@@ -432,6 +482,10 @@ bundle matches source tree
 The final line matters as much as the hashes: `make verify` also compares the
 bundle's output against the source tree's, so a build that altered behaviour
 would fail even if it hashed consistently.
+
+The hashes above are those of the current commit; `make verify` recomputes
+them, and [`deps-proof.txt`](deps-proof.txt) carries the pair recorded at
+submission.
 
 ---
 
@@ -460,6 +514,7 @@ src/mask.mjs          shared comment and string masker for non-JavaScript langua
 src/toml.mjs          TOML subset reader for Cargo.toml and pyproject.toml
 src/vendor.mjs        vendored-source detection
 src/substitutions.mjs curated standard-library replacement and tooling tables
+src/ignore.mjs        .depxignore rules: parsing, matching, and reporting
 src/lang/             one adapter per language, behind a common interface
 tools/bundle.mjs      deterministic single-file bundler
 tools/snips.sh        regenerates snips/ from live runs
@@ -477,7 +532,7 @@ Adding a language means adding one module to `src/lang/` and registering it in
 make test
 ```
 
-159 tests across 42 suites, using `node:test` and `node:assert/strict` with no
+170 tests across 45 suites, using `node:test` and `node:assert/strict` with no
 configuration file and no test framework. The resolution, vendoring and CLI
 suites construct throwaway projects under `os.tmpdir()` and analyse them end to
 end; 77 of those invoke `bin/depx.mjs` as a child process and assert on stdout

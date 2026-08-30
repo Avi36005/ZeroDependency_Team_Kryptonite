@@ -1,0 +1,42 @@
+# CI runs the same four commands a judge would run by hand.
+#
+# No action is used beyond checkout, and no dependency is installed: the
+# runner's own Node is enough, which is the whole claim this project makes.
+
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Node version
+        run: node --version
+
+      - name: Build
+        run: make build
+
+      - name: Test
+        run: make test
+
+      # The dependency claim, checked rather than asserted: an empty manifest,
+      # no install tree, and no vendored source.
+      - name: Zero-dependency self-check
+        run: node bin/depx.mjs zero-dep .
+
+      # Two builds, identical hashes, and the bundle behaving like the source
+      # tree it was built from.
+      - name: Reproducible build
+        run: make verify
+
+      # The tool on its own source. Ghosts or broken imports fail the job.
+      - name: Self-scan
+        run: node bin/depx.mjs check .

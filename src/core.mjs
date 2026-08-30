@@ -9,6 +9,7 @@ import { walk, isBinary } from './walk.mjs';
 import { languageForFile, ghostCapable, LANGUAGES } from './lang/index.mjs';
 import { substitutionFor, toolingReason } from './substitutions.mjs';
 import { inspectFile, rank } from './vendor.mjs';
+import { loadIgnoreRules, applyIgnoreRules } from './ignore.mjs';
 
 /**
  * @typedef {'ghost'|'phantom'|'dead'|'replaceable'|'broken'} FindingType
@@ -141,6 +142,15 @@ export async function analyze(root, options = {}) {
 
   results.sort((a, b) => b.files.length - a.files.length);
 
+  // .depxignore is applied last, over the assembled findings, so a rule can
+  // name a finding type without every adapter having to know about it. What
+  // it removes is counted and reported: suppression that cannot be seen is
+  // worse than the finding it hides.
+  const { kept, suppressed } = applyIgnoreRules(
+    await loadIgnoreRules(absRoot),
+    results.flatMap((r) => r.findings),
+  );
+
   return {
     root: absRoot,
     filesScanned,
@@ -148,7 +158,8 @@ export async function analyze(root, options = {}) {
     skippedProjects: skippedProjects.sort(),
     languages: results,
     warnings,
-    findings: results.flatMap((r) => r.findings),
+    findings: kept,
+    suppressed,
   };
 }
 

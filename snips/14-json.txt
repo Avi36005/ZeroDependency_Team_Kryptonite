@@ -5,6 +5,7 @@ $ depx check fixtures/messy --json | head -40
   "filesSkipped": 0,
   "warnings": [],
   "skippedProjects": [],
+  "suppressed": [],
   "languages": [
     {
       "id": "javascript",
@@ -38,5 +39,4 @@ $ depx check fixtures/messy --json | head -40
     {
       "id": "python",
       "name": "Python",
-      "tier": 1,
 ...

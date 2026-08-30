@@ -1,0 +1,15 @@
+$ depx check snips/fixtures/suppressed
+
+  scanned 1 files in 1 language
+  JavaScript / TypeScript: 1 files, 2 imported packages, 2 declared
+
+  UNDECLARED  imported but not in the manifest - install tree absent, so unverified
+    genuinely-missing  src/app.js:3:21
+
+  DEAD  declared, never imported
+    left-pad  declared but no import of it was found
+
+  1 undeclared / 1 dead
+  2 findings suppressed by .depxignore
+$ echo $?
+0

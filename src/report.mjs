@@ -179,11 +179,16 @@ export function renderReport(result, { only = null } = {}) {
   }
 
   if (shown === 0) {
+    // "Clean" has to mean clean. A repository whose findings were all
+    // suppressed is configured, not clean, and the line says which.
+    const suppressedCount = (result.suppressed ?? []).length;
     out.push(
       '  ' +
         (result.filesScanned === 0
           ? c.yellow('no source files found here - nothing was analysed')
-          : c.green('clean - every import resolves and nothing is unused')),
+          : suppressedCount
+            ? c.green('nothing to report outside .depxignore')
+            : c.green('clean - every import resolves and nothing is unused')),
     );
     out.push('');
   }
@@ -207,6 +212,18 @@ export function renderReport(result, { only = null } = {}) {
   const hidden = result.findings.length - inScope.length;
 
   out.push('  ' + (summary || c.dim('nothing to report')));
+
+  // Suppression is always visible, even when the findings are not. A reader
+  // has to be able to tell a clean repository from a well-configured one.
+  const suppressed = result.suppressed ?? [];
+  if (suppressed.length) {
+    out.push(
+      '  ' +
+        c.dim(
+          `${suppressed.length} finding${suppressed.length === 1 ? '' : 's'} suppressed by .depxignore`,
+        ),
+    );
+  }
   if (hidden > 0) {
     out.push(
       '  ' + c.dim(`${hidden} finding${hidden === 1 ? '' : 's'} of other kinds - run 'depx check' to see them`),
