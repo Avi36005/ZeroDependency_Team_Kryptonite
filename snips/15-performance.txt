@@ -1,0 +1,16 @@
+# 6,000 generated files, each carrying a real import, a relative
+# import, and three decoys (regex, comment, template literal).
+
+$ find . -name "*.js" | wc -l
+6000
+
+$ time depx check .
+
+  scanned 6000 files in 1 language
+  JavaScript / TypeScript: 6000 files, 1 imported packages, 1 declared
+
+  clean - every import resolves and nothing is unused
+
+  nothing to report
+
+real	0m0.71s

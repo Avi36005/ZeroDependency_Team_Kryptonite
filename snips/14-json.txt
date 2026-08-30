@@ -1,0 +1,42 @@
+$ depx check fixtures/messy --json | head -40
+{
+  "root": "/Users/avinashgehi3/projects/zerodependency-Team-Kryptonite/fixtures/messy",
+  "filesScanned": 4,
+  "filesSkipped": 0,
+  "warnings": [],
+  "skippedProjects": [],
+  "languages": [
+    {
+      "id": "javascript",
+      "name": "JavaScript / TypeScript",
+      "tier": 1,
+      "ghostCapable": true,
+      "files": 2,
+      "importedPackages": 7,
+      "declared": [
+        "chalk",
+        "minimist",
+        "uuid",
+        "express",
+        "moment",
+        "rimraf"
+      ]
+    },
+    {
+      "id": "go",
+      "name": "Go",
+      "tier": 1,
+      "ghostCapable": true,
+      "files": 1,
+      "importedPackages": 3,
+      "declared": [
+        "github.com/google/uuid",
+        "github.com/sirupsen/logrus",
+        "github.com/gorilla/mux"
+      ]
+    },
+    {
+      "id": "python",
+      "name": "Python",
+      "tier": 1,
+...
