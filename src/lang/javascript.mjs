@@ -139,6 +139,7 @@ const IMPORT_POSITIONS = [
   { re: /\bimport\s*$/, kind: 'bare' },              // import 'y'
   { re: /\brequire\s*\(\s*$/, kind: 'require' },     // require('y')
   { re: /\brequire\.resolve\s*\(\s*$/, kind: 'require' },
+  { re: /\bimport\.meta\.resolve\s*\(\s*$/, kind: 'require' },
   { re: /\bcreateRequire\s*\([^)]*\)\s*\(\s*$/, kind: 'require' },
 ];
 
@@ -188,6 +189,12 @@ export function normalize(specifier) {
   if (specifier.startsWith('node:')) return null;                          // builtin
   if (isBuiltin(specifier)) return null;
   if (/^[a-z][a-z0-9+.-]*:/i.test(specifier)) return null;                 // http:, data:, file:
+  // Not packages: Node subpath imports (package.json "imports") and the
+  // path-alias conventions bundlers reserve. npm names cannot start with
+  // these characters, so nothing real is suppressed.
+  if (specifier.startsWith('#')) return null;                              // #internal/x
+  if (specifier.startsWith('@/') || specifier.startsWith('~/') || specifier === '~') return null;
+  if (specifier.startsWith('$')) return null;                              // $lib (SvelteKit)
   const parts = specifier.split('/');
   return specifier.startsWith('@') ? parts.slice(0, 2).join('/') : parts[0];
 }
@@ -200,6 +207,9 @@ export async function readManifest(dir) {
       dev: new Set(Object.keys(raw.devDependencies ?? {})),
       optional: new Set(Object.keys(raw.optionalDependencies ?? {})),
       peer: new Set(Object.keys(raw.peerDependencies ?? {})),
+      // A package may import itself by name through its own "exports" map,
+      // which Node supports and which is not a dependency.
+      self: typeof raw.name === 'string' ? raw.name : null,
     };
   } catch {
     return null;
