@@ -5,10 +5,10 @@ import { join } from 'node:path';
 import { mask, lineIndex, positionOf } from '../mask.mjs';
 
 // Shipped with the interpreter, so never a ghost.
-const STDLIB = new Set(`abbrev base64 benchmark bigdecimal cgi coverage csv date delegate did_you_mean digest
-drb english erb etc expect fcntl fiddle fileutils find forwardable getoptlong io ipaddr json logger
+const STDLIB = new Set(`English abbrev base64 benchmark bigdecimal cgi coverage csv date delegate did_you_mean digest
+drb english erb etc expect fcntl fiddle fileutils find forwardable getoptlong io ipaddr json logger matrix
 mkmf monitor mutex_m net objspace observer open-uri open3 openssl optparse ostruct pathname pp prettyprint
-prime pstore psych racc rdoc readline reline resolv rinda ripper rss rubygems securerandom set shellwords
+prime pstore psych racc rbconfig rdoc readline reline resolv rinda ripper rss rubygems securerandom set shellwords
 singleton socket stringio strscan syslog tempfile time timeout tmpdir tracer tsort un uri weakref yaml zlib`
   .split(/\s+/).filter(Boolean));
 
@@ -21,10 +21,16 @@ export function scanImports(src) {
 
   for (const str of strings) {
     const before = masked.slice(Math.max(0, str.start - 40), str.start);
-    if (!/\brequire(?:_relative)?\s*\(?\s*$/.test(before)) continue;
+    const m = /\brequire(_relative)?\s*\(?\s*$/.exec(before);
+    if (!m) continue;
     if (!str.value) continue;
     const { line, column } = positionOf(starts, str.start);
-    found.push({ specifier: str.value, line, column, kind: 'require' });
+    // require_relative is always a path relative to the current file, never a
+    // gem - surface it as `./x` so it goes through broken-import checking
+    // instead of being judged against the Gemfile.
+    const relative = Boolean(m[1]);
+    const specifier = relative && !str.value.startsWith('.') ? `./${str.value}` : str.value;
+    found.push({ specifier, line, column, kind: relative ? 'require_relative' : 'require' });
   }
 
   return found;
