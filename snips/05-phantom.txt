@@ -1,0 +1,14 @@
+$ depx phantom fixtures/messy
+
+  scanned 4 files in 3 languages
+  JavaScript / TypeScript: 2 files, 7 imported packages, 6 declared
+  Go: 1 files, 3 imported packages, 3 declared
+  Python: 1 files, 5 imported packages, 4 declared
+
+  PHANTOM  imported and installed, never declared
+    ms  src/app.js:7:16
+
+  1 phantom
+  16 findings of other kinds - run 'depx check' to see them
+$ echo $?
+0

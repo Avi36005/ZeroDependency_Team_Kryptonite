@@ -1,0 +1,17 @@
+$ depx dead fixtures/messy
+
+  scanned 4 files in 3 languages
+  JavaScript / TypeScript: 2 files, 7 imported packages, 6 declared
+  Go: 1 files, 3 imported packages, 3 declared
+  Python: 1 files, 5 imported packages, 4 declared
+
+  DEAD  declared, never imported
+    moment                  declared but no import of it was found
+    rimraf                  unused, and fs.rm(path, { recursive: true, force: true }) replaces it anyway
+    github.com/gorilla/mux  unused, and net/http ServeMux replaces it anyway
+    click                   unused, and argparse replaces it anyway
+
+  4 dead
+  13 findings of other kinds - run 'depx check' to see them
+$ echo $?
+0

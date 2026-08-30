@@ -1,0 +1,20 @@
+$ depx ghosts fixtures/messy
+
+  scanned 4 files in 3 languages
+  JavaScript / TypeScript: 2 files, 7 imported packages, 6 declared
+  Go: 1 files, 3 imported packages, 3 declared
+  Python: 1 files, 5 imported packages, 4 declared
+
+  GHOSTS  imported, but nothing here provides them
+    async-retry-utils                   src/app.js:5:34
+    json-schema-validator-pro           src/app.js:6:26
+    github.com/acme/nonexistent-helper  gosrc/main.go:9:2
+
+  3 ghosts
+  14 findings of other kinds - run 'depx check' to see them
+
+  Nothing local provides these, so the build breaks on a clean checkout.
+  Check each name against its registry before shipping: one that is not
+  there either is a hallucinated import, and that is the slopsquat window.
+$ echo $?
+1

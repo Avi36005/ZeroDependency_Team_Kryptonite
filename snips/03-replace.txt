@@ -1,0 +1,24 @@
+$ depx replace fixtures/messy
+
+  scanned 4 files in 3 languages
+  JavaScript / TypeScript: 2 files, 7 imported packages, 6 declared
+  Go: 1 files, 3 imported packages, 3 declared
+  Python: 1 files, 5 imported packages, 4 declared
+
+  REPLACEABLE  the standard library already ships this
+    chalk                       -> util.styleText()  (node 20.12)
+                                      honours NO_COLOR and TTY detection for you
+    minimist                    -> util.parseArgs()  (node 18.3)
+                                      strings and booleans only; subcommands are yours
+    uuid                        -> crypto.randomUUID()  (node 14.17)
+                                      v4 only
+    github.com/google/uuid      -> uuid  (go 1.27)
+                                      moved into the standard library
+    github.com/sirupsen/logrus  -> log/slog  (go 1.21)
+    requests                    -> urllib.request  (always)
+                                      HTTP/1.1 only, no pooling
+
+  6 replaceable
+  11 findings of other kinds - run 'depx check' to see them
+$ echo $?
+0
