@@ -1,7 +1,7 @@
 {
   "name": "depx",
   "version": "0.1.0",
-  "description": "Dependency x-ray. Finds imports that resolve to nothing, across 10 languages. Zero dependencies.",
+  "description": "Dependency x-ray. Finds imports that resolve to nothing, across 12 languages. Zero dependencies.",
   "type": "module",
   "bin": {
     "depx": "./bin/depx.mjs"

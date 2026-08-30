@@ -1,5 +1,5 @@
 track = "A"
-pitch = "Finds imports your code makes that resolve to nothing - the slopsquat attack surface AI leaves behind - across 10 languages, fully offline."
+pitch = "Finds imports your code makes that resolve to nothing - the slopsquat attack surface AI leaves behind - across 12 languages, fully offline."
 team  = "Kryptonite"
 language = "JavaScript (Node 26)"
 bonuses = ["package-killer", "stdlib-log", "reproducible-build"]
