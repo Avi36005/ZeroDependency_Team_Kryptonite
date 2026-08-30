@@ -36,6 +36,7 @@ does not. Every other tool in this category stops at the manifest.
 |---|---|
 | [10-monorepo.txt](10-monorepo.txt) | nested projects named rather than silently skipped |
 | [13-single-file.txt](13-single-file.txt) | one file judged against its project's manifest, found by walking up |
+| [20-vendored.txt](20-vendored.txt) | `depx vendored` finding copied source outside the rule check |
 | [19-depxignore.txt](19-depxignore.txt) | `.depxignore` suppressing two findings while two real ones still report |
 | [14-json.txt](14-json.txt) | `--json` for CI, including warnings, suppressions and skipped projects |
 | [07-langs.txt](07-langs.txt) | ten languages and the tier each is detected at |

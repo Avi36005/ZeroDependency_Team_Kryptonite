@@ -480,3 +480,34 @@ describe('--json carries everything the report can say', () => {
     await rm(d, { recursive: true, force: true });
   });
 });
+
+describe('the vendored command', () => {
+  test('finds copied source outside the Zero Dependency rule check', async () => {
+    const r = await depx(['vendored', 'snips/fixtures/faked-zero-dep']);
+    has(r.out, 'REVIEW');
+    has(r.out, 'files to review');
+  });
+
+  test('stays silent on hand-written source, and exits 0 either way', async () => {
+    // Signals are for a human to read, not a gate to fail: a repository is not
+    // broken because a file looked generated.
+    const d = await project({
+      'package.json': '{"dependencies":{}}',
+      'src/a.js': '// Walks a tree.\nexport function walk() { return 1 / 2; }\n',
+    });
+    const r = await depx(['vendored', d]);
+    has(r.out, 'no copied or generated source detected');
+    assert.equal(r.code, 0);
+    await rm(d, { recursive: true, force: true });
+  });
+
+  test('does not flag depx itself', async () => {
+    const r = await depx(['vendored', REPO]);
+    has(r.out, 'no copied or generated source detected');
+  });
+
+  test('is listed in the help text', async () => {
+    const r = await depx(['--help']);
+    has(r.out, 'vendored');
+  });
+});

@@ -11,6 +11,7 @@ $ depx --help
     phantom    only imports that are installed but never declared
     dead       only declared packages that are never imported
     replace    only packages the standard library already ships
+    vendored   find third-party source copied into this repo, not installed
     zero-dep   verify this repo against the Zero Dependency rule
     langs      list supported languages and their detection tier
 

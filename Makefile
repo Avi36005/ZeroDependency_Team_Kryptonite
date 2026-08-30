@@ -1,4 +1,4 @@
-.PHONY: build test dist verify proof snips clean
+.PHONY: build test dist verify proof snips demo clean
 
 build:
 	@node --check bin/depx.mjs && chmod +x bin/depx.mjs
@@ -50,6 +50,10 @@ proof:
 	@echo '$$ make verify   # reproducible build' >> deps-proof.txt
 	@$(MAKE) --no-print-directory verify >> deps-proof.txt 2>&1 || true
 	@cat deps-proof.txt
+
+# A paced walkthrough, built to be screen-recorded. DEMO_PAUSE=0 to run flat.
+demo:
+	@sh tools/demo.sh
 
 # Regenerate snips/ - captured output, one file per scenario.
 snips:

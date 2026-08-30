@@ -133,7 +133,7 @@ would not be safe in a Track B submission.
 
 **Where:** [`test/`](test/)
 
-170 tests across 45 suites, using `describe`/`test` and strict assertions. No
+174 tests across 46 suites, using `describe`/`test` and strict assertions. No
 config file, no transform step, no watch-mode dependency. `npm test` runs
 `node --test`.
 

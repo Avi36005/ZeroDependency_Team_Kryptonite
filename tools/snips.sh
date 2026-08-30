@@ -41,6 +41,7 @@ snip 11-help.txt --help
 snip 12-realistic-app.txt check snips/fixtures/realistic-app
 snip 13-single-file.txt check fixtures/messy/src/app.js
 snip 19-depxignore.txt check snips/fixtures/suppressed
+snip 20-vendored.txt vendored snips/fixtures/faked-zero-dep
 
 # The no-manifest case has to be a Python file with no requirements.txt.
 # Committing one would make this repo fail its own zero-dep check, so it is

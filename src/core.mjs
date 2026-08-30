@@ -374,6 +374,49 @@ async function exists(path) {
  * Verify a repository against the Zero Dependency rule: an empty runtime
  * dependency manifest, in whichever languages the repo actually uses.
  */
+/**
+ * Scan a tree for source that reads as copied rather than written.
+ *
+ * Separate from verifyZeroDep because the question - "is there third-party
+ * code pasted into this repository?" - is worth asking outside the Zero
+ * Dependency rule, and a feature nobody can find is a feature nobody uses.
+ *
+ * @returns {Promise<{root: string, filesScanned: number, vendored: Array}>}
+ */
+export async function findVendored(root) {
+  const absRoot = resolvePath(root);
+  let rootStat;
+  try {
+    rootStat = await stat(absRoot);
+  } catch {
+    throw new Error(`path does not exist: ${root}`);
+  }
+
+  const boundaries = LANGUAGES.flatMap((l) => l.manifestFiles ?? []);
+  const suspects = [];
+  let filesScanned = 0;
+
+  const files = rootStat.isFile()
+    ? [{ path: absRoot, rel: relativePath(dirname(absRoot), absRoot) }][Symbol.iterator]()
+    : walk(absRoot, { boundaries });
+
+  for await (const file of files) {
+    if (!languageForFile(file.path)) continue;
+    let size;
+    try {
+      ({ size } = await stat(file.path));
+    } catch {
+      continue;
+    }
+    if (size > MAX_SOURCE_BYTES || (size > 0 && (await isBinary(file.path)))) continue;
+    filesScanned++;
+    const report = await inspectFile(file.path, file.rel);
+    if (report) suspects.push(report);
+  }
+
+  return { root: absRoot, filesScanned, vendored: rank(suspects) };
+}
+
 export async function verifyZeroDep(root) {
   const absRoot = resolvePath(root);
   const rows = [];

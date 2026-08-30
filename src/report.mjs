@@ -246,6 +246,39 @@ export function renderReport(result, { only = null } = {}) {
   return { text: out.join('\n'), exitCode: ghosts + broken > 0 ? 1 : 0 };
 }
 
+/**
+ * The vendoring report on its own, outside the Zero Dependency rule check.
+ * Same evidence, same refusal to call it a verdict.
+ */
+export function renderVendored(result) {
+  const out = ['', '  ' + c.dim(`scanned ${result.filesScanned} source files`), ''];
+  const vendored = result.vendored ?? [];
+
+  if (vendored.length === 0) {
+    out.push('  ' + c.green('no copied or generated source detected'));
+    out.push('');
+    return { text: out.join('\n'), exitCode: 0 };
+  }
+
+  out.push('  ' + c.yellow(c.bold('REVIEW')) + '  ' + c.dim('source that does not read as hand-written'));
+  const rows = [];
+  for (const suspect of vendored.slice(0, 20)) {
+    rows.push(['    ' + c.yellow(suspect.file), c.dim(`:${suspect.signals[0].line}`)]);
+    for (const signal of suspect.signals) rows.push(['', c.dim('      ' + signal.why)]);
+  }
+  out.push(...columns(rows));
+  if (vendored.length > 20) out.push(c.dim(`    ...and ${vendored.length - 20} more files`));
+
+  out.push('');
+  out.push(
+    '  ' +
+      `${vendored.length} file${vendored.length === 1 ? '' : 's'} to review` +
+      c.dim(' - signals, not proof: open them and decide'),
+  );
+  out.push('');
+  return { text: out.join('\n'), exitCode: 0 };
+}
+
 export function renderZeroDep(result) {
   const out = ['', '  ' + c.bold('Zero Dependency rule check'), ''];
   const missing = result.missing ?? [];

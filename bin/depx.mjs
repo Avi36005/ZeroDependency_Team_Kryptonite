@@ -6,8 +6,8 @@
 // the help text are ours, which is the whole reason the package exists.
 
 import { parseArgs } from 'node:util';
-import { analyze, verifyZeroDep } from '../src/core.mjs';
-import { renderReport, renderZeroDep, setColor, columns, c } from '../src/report.mjs';
+import { analyze, verifyZeroDep, findVendored } from '../src/core.mjs';
+import { renderReport, renderZeroDep, renderVendored, setColor, columns, c } from '../src/report.mjs';
 import { LANGUAGES } from '../src/lang/index.mjs';
 
 const VERSION = '0.1.0';
@@ -18,6 +18,7 @@ const COMMANDS = {
   phantom: 'only imports that are installed but never declared',
   dead: 'only declared packages that are never imported',
   replace: 'only packages the standard library already ships',
+  vendored: 'find third-party source copied into this repo, not installed',
   'zero-dep': 'verify this repo against the Zero Dependency rule',
   langs: 'list supported languages and their detection tier',
 };
@@ -129,6 +130,17 @@ async function main(argv) {
     const known = new Set(LANGUAGES.map((l) => l.id));
     const unknown = include.filter((id) => !known.has(id));
     if (unknown.length) fail(`unknown language id: ${unknown.join(', ')}`);
+  }
+
+  if (command === 'vendored') {
+    const result = await findVendored(path);
+    if (values.json) {
+      process.stdout.write(JSON.stringify(result, null, 2) + '\n');
+      return 0;
+    }
+    const { text, exitCode } = renderVendored(result);
+    if (!values.quiet) process.stdout.write(text);
+    return exitCode;
   }
 
   if (command === 'zero-dep') {

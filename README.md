@@ -188,6 +188,7 @@ by walking up from the file.
 | `phantom [path]` | imports installed but never declared |
 | `dead [path]` | declared packages that are never imported |
 | `replace [path]` | packages the standard library already provides |
+| `vendored [path]` | third-party source copied into the repo rather than installed |
 | `zero-dep [path]` | verification against the Zero Dependency rule |
 | `langs` | supported languages and their detection tier |
 
@@ -388,8 +389,15 @@ closes the loophole in prose — copying a library into `src/` is "a dependency
 with extra steps" — but no tool checks it, because the manifest still reads
 `{}`.
 
-`depx` therefore inspects the source for the traces code carries when it was
-copied rather than written: source map comments, bundler-preserved `@license`
+The check is also available on its own, because "is there third-party code
+pasted into this repository?" is worth asking outside this rule:
+
+```sh
+depx vendored .
+```
+
+`depx` inspects the source for the traces code carries when it was copied
+rather than written: source map comments, bundler-preserved `@license`
 pragmas, generated-file banners, UMD wrappers, third-party licence headers,
 and line density characteristic of minified output.
 
@@ -496,9 +504,10 @@ submission.
 | Target | Action |
 |---|---|
 | `make build` | syntax check and set the executable bit |
-| `make test` | run the full suite (`node --test`) |
+| `make test` | run all 174 tests (`node --test`) |
 | `make dist` | produce the single-file build |
 | `make verify` | build twice, compare hashes, diff behaviour against the source tree |
+| `make demo` | paced walkthrough, built to be screen-recorded (`DEMO_PAUSE=0` to run flat) |
 | `make snips` | regenerate `snips/` from live runs |
 | `make proof` | regenerate `deps-proof.txt` |
 | `make clean` | remove generated artefacts |
@@ -518,6 +527,7 @@ src/ignore.mjs        .depxignore rules: parsing, matching, and reporting
 src/lang/             one adapter per language, behind a common interface
 tools/bundle.mjs      deterministic single-file bundler
 tools/snips.sh        regenerates snips/ from live runs
+tools/demo.sh         paced walkthrough for recording
 test/                 unit and end-to-end suites
 fixtures/             a deliberately broken multi-language project
 snips/                captured output, one file per scenario
@@ -532,7 +542,7 @@ Adding a language means adding one module to `src/lang/` and registering it in
 make test
 ```
 
-170 tests across 45 suites, using `node:test` and `node:assert/strict` with no
+174 tests across 46 suites, using `node:test` and `node:assert/strict` with no
 configuration file and no test framework. The resolution, vendoring and CLI
 suites construct throwaway projects under `os.tmpdir()` and analyse them end to
 end; 77 of those invoke `bin/depx.mjs` as a child process and assert on stdout
