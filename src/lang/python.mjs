@@ -1,13 +1,13 @@
 // Python adapter.  Replaces: `ast` walking via a Python subprocess, `findimports`, `pipreqs`.
 
-import { readFile } from 'node:fs/promises';
+import { readFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { mask, lineIndex, positionOf } from '../mask.mjs';
 import { parseToml } from '../toml.mjs';
 
 // Python's standard library, 3.9 through 3.14. An import of any of these
 // resolves without a package, so it can never be a ghost.
-const STDLIB = new Set(`abc aifc argparse array ast asynchat asyncio asyncore atexit audioop base64 bdb
+const STDLIB = new Set(`__future__ __main__ _thread abc aifc argparse array ast asynchat asyncio asyncore atexit audioop base64 bdb
 binascii bisect builtins bz2 calendar cgi cgitb chunk cmath cmd code codecs codeop collections colorsys
 compileall compression concurrent configparser contextlib contextvars copy copyreg cProfile crypt csv
 ctypes curses dataclasses datetime dbm decimal difflib dis distutils doctest email encodings ensurepip
@@ -110,6 +110,7 @@ function parseRequirements(text) {
   for (const raw of text.split('\n')) {
     const line = raw.split('#')[0].trim();
     if (!line || line.startsWith('-')) continue;   // -r other.txt, -e ., --flags
+    if (line.includes('://')) continue;            // git+https://, file:// - a URL, not a name
     const name = requirementName(line);
     if (name) names.push(name);
   }
@@ -118,12 +119,75 @@ function parseRequirements(text) {
 
 /** `requests[security]>=2.0,<3 ; python_version<"3.10"` -> `requests` */
 function requirementName(spec) {
-  const m = /^([A-Za-z0-9._-]+)/.exec(spec.split(';')[0].trim());
+  // PEP 508: a name starts and ends with a letter or digit.
+  const m = /^([A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?)/.exec(spec.split(';')[0].trim());
   return m ? m[1] : null;
 }
 
 async function readIfPresent(path) {
   try { return await readFile(path, 'utf8'); } catch { return null; }
+}
+
+/**
+ * Enumerate what is actually installed, by reading site-packages once.
+ *
+ * A virtualenv buries site-packages under a version directory
+ * (`.venv/lib/python3.12/site-packages`), so the path cannot be hard-coded.
+ * Each `*.dist-info` entry names a distribution; each module directory or
+ * `.py` file names an importable module. Both are folded the way PyPI folds
+ * names, so `PyYAML-6.0.dist-info` matches a declared `pyyaml`.
+ *
+ * @returns {Promise<Set<string>|null>} canonical installed names, or null
+ *          when no install tree exists at all.
+ */
+async function findInstalled(root) {
+  const sitePackages = [];
+  for (const env of ['.venv', 'venv', '.']) {
+    for (const lib of ['lib', 'Lib', 'lib64']) {
+      const base = join(root, env, lib);
+      let entries;
+      try { entries = await readdir(base); } catch { continue; }
+      if (entries.includes('site-packages')) sitePackages.push(join(base, 'site-packages'));
+      for (const e of entries) {
+        if (e.startsWith('python')) sitePackages.push(join(base, e, 'site-packages'));
+      }
+    }
+    // a bare site-packages directory checked into the repo
+    const direct = join(root, env, 'site-packages');
+    try { await readdir(direct); sitePackages.push(direct); } catch { /* absent */ }
+  }
+
+  let found = null;
+  for (const dir of sitePackages) {
+    let entries;
+    try { entries = await readdir(dir); } catch { continue; }
+    found ??= new Set();
+    for (const entry of entries) {
+      const fold = (s) => s.toLowerCase().replaceAll('_', '-');
+      const dist = /^(.+?)-[0-9][^-]*\.(?:dist|egg)-info$/.exec(entry);
+      if (dist) found.add(fold(dist[1]));
+      else if (entry.endsWith('.py')) found.add(fold(entry.slice(0, -3)));
+      else if (!entry.includes('.')) found.add(fold(entry));
+    }
+  }
+  return found;
+}
+
+/**
+ * Module names this repository defines for itself. `import utils` next to a
+ * `utils.py` is a local import, not a missing package, so every file stem and
+ * every directory on the way to one is a name we must never flag.
+ */
+function localModulesFromPath(rel) {
+  const names = [];
+  const parts = rel.split('/');
+  const file = parts.pop();
+  if (file.endsWith('.py') || file.endsWith('.pyi')) {
+    const stem = file.replace(/\.pyi?$/, '');
+    if (stem !== '__init__' && stem !== '__main__') names.push(stem);
+  }
+  names.push(...parts); // package directories: `import pkg` / `from pkg.sub import x`
+  return names;
 }
 
 export default {
@@ -137,4 +201,6 @@ export default {
   scanImports,
   normalize,
   readManifest,
+  findInstalled,
+  localModulesFromPath,
 };
