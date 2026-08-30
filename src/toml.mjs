@@ -15,8 +15,8 @@ export function parseToml(text) {
   const root = {};
   let table = root;
 
-  for (const rawLine of text.split('\n')) {
-    const line = stripComment(rawLine).trim();
+  for (const logical of logicalLines(text)) {
+    const line = logical.trim();
     if (!line) continue;
 
     // [table] or [nested.table]
@@ -39,6 +39,53 @@ export function parseToml(text) {
   }
 
   return root;
+}
+
+/**
+ * Join physical lines into logical ones: a value whose brackets or braces are
+ * still open at the end of a line continues on the next. This is what makes
+ * the multi-line `dependencies = [ ... ]` arrays that every real
+ * pyproject.toml uses parse correctly. Comments are stripped per physical
+ * line, before joining, so a `# comment` inside an array does not survive.
+ */
+function logicalLines(text) {
+  const out = [];
+  let buffer = '';
+  let depth = 0;
+  for (const raw of text.split('\n')) {
+    const line = stripComment(raw);
+    depth += bracketDelta(line);
+    buffer = buffer ? buffer + '\n' + line : line;
+    if (depth <= 0) {
+      out.push(buffer);
+      buffer = '';
+      depth = 0;
+    }
+  }
+  if (buffer) out.push(buffer);
+  return out;
+}
+
+/** Net count of `[`/`{` minus `]`/`}` outside quoted strings. */
+function bracketDelta(line) {
+  let delta = 0;
+  let inString = false;
+  let quote = '';
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (inString) {
+      if (c === '\\' && quote === '"') { i++; continue; }
+      if (c === quote) inString = false;
+    } else if (c === '"' || c === "'") {
+      inString = true;
+      quote = c;
+    } else if (c === '[' || c === '{') {
+      delta++;
+    } else if (c === ']' || c === '}') {
+      delta--;
+    }
+  }
+  return delta;
 }
 
 function stripComment(line) {
