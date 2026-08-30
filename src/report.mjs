@@ -83,7 +83,10 @@ export function columns(rows, gutter = 2) {
 }
 
 const HEADINGS = {
-  ghost: { label: 'GHOSTS', blurb: 'imported, but no such package exists', paint: c.red },
+  // "Resolves to nothing here" is what the evidence supports. Proving a name
+  // does not exist anywhere would need a registry index we deliberately do
+  // not ship, so the label claims non-resolution, not non-existence.
+  ghost: { label: 'GHOSTS', blurb: 'imported, but nothing here provides them', paint: c.red },
   broken: { label: 'BROKEN', blurb: 'relative imports pointing at nothing', paint: c.red },
   phantom: { label: 'PHANTOM', blurb: 'imported and installed, never declared', paint: c.yellow },
   undeclared: { label: 'UNDECLARED', blurb: 'imported but not in the manifest - install tree absent, so unverified', paint: c.yellow },
@@ -118,13 +121,38 @@ export function renderReport(result, { only = null } = {}) {
         (lang.lang.ghostCapable === false ? c.dim(`  [tier 3: ${lang.lang.reason}]`) : ''),
     );
   }
+  for (const warning of result.warnings ?? []) {
+    out.push('  ' + c.yellow('warning: ') + c.dim(warning));
+  }
+
+  // A nested project is skipped on purpose, but silence about it reads as a
+  // broken scan - especially in a monorepo, where every package sits in a
+  // subdirectory and the root scan legitimately finds nothing.
+  const nested = result.skippedProjects ?? [];
+  if (nested.length) {
+    const shown = nested.slice(0, 6).join(', ');
+    out.push(
+      '  ' +
+        c.dim(
+          `${nested.length} nested project${nested.length === 1 ? '' : 's'} not descended into: ${shown}` +
+            (nested.length > 6 ? `, +${nested.length - 6} more` : ''),
+        ),
+    );
+    out.push('  ' + c.dim('each has its own manifest - run depx inside it to check it'));
+  }
   out.push('');
 
   let shown = 0;
   for (const type of types) {
-    const items = result.findings.filter((f) => f.type === type);
+    let items = result.findings.filter((f) => f.type === type);
     if (items.length === 0) continue;
     shown += items.length;
+
+    // Packages a framework or build tool loads are unimported by design, so
+    // they sink below the ones that are actually worth deleting.
+    if (type === 'dead') {
+      items = [...items].sort((a, b) => Number(a.expected ?? false) - Number(b.expected ?? false));
+    }
 
     const head = HEADINGS[type];
     out.push('  ' + head.paint(c.bold(head.label)) + '  ' + c.dim(head.blurb));
@@ -151,23 +179,50 @@ export function renderReport(result, { only = null } = {}) {
   }
 
   if (shown === 0) {
-    out.push('  ' + c.green('clean - every import resolves and nothing is unused'));
+    out.push(
+      '  ' +
+        (result.filesScanned === 0
+          ? c.yellow('no source files found here - nothing was analysed')
+          : c.green('clean - every import resolves and nothing is unused')),
+    );
     out.push('');
   }
 
-  const ghosts = result.findings.filter((f) => f.type === 'ghost').length;
-  const broken = result.findings.filter((f) => f.type === 'broken').length;
+  // A subcommand asked about one kind of finding, so the summary and the exit
+  // code answer that question. Counting findings the user filtered out would
+  // make `depx replace` fail a CI job over an unrelated ghost.
+  const inScope = only ? result.findings.filter((f) => f.type === only) : result.findings;
+  const ghosts = inScope.filter((f) => f.type === 'ghost').length;
+  const broken = inScope.filter((f) => f.type === 'broken').length;
+
+  // `broken`, `undeclared`, `replaceable` and `dead` read as their own plural.
+  const PLURAL = { ghost: 'ghosts', phantom: 'phantoms' };
   const summary = ORDER.map((t) => {
-    const n = result.findings.filter((f) => f.type === t).length;
-    return n ? `${n} ${t}${n === 1 ? '' : 's'}` : null;
+    const n = inScope.filter((f) => f.type === t).length;
+    return n ? `${n} ${n === 1 ? t : PLURAL[t] ?? t}` : null;
   })
     .filter(Boolean)
     .join(c.dim(' / '));
 
+  const hidden = result.findings.length - inScope.length;
+
   out.push('  ' + (summary || c.dim('nothing to report')));
+  if (hidden > 0) {
+    out.push(
+      '  ' + c.dim(`${hidden} finding${hidden === 1 ? '' : 's'} of other kinds - run 'depx check' to see them`),
+    );
+  }
   if (ghosts) {
     out.push('');
-    out.push('  ' + c.red('These names are unclaimed today. That is the slopsquat window.'));
+    out.push(
+      '  ' + c.red('Nothing local provides these, so the build breaks on a clean checkout.'),
+    );
+    out.push(
+      '  ' +
+        c.dim(
+          'Check each name against its registry before shipping: one that is not\n  there either is a hallucinated import, and that is the slopsquat window.',
+        ),
+    );
   }
   out.push('');
 
@@ -176,8 +231,10 @@ export function renderReport(result, { only = null } = {}) {
 
 export function renderZeroDep(result) {
   const out = ['', '  ' + c.bold('Zero Dependency rule check'), ''];
-  if (result.rows.length === 0) {
-    out.push('  ' + c.dim('no dependency manifest found for any supported language'));
+  const missing = result.missing ?? [];
+
+  if (result.rows.length === 0 && missing.length === 0) {
+    out.push('  ' + c.dim('no source files and no dependency manifest found here'));
     out.push('');
     return { text: out.join('\n'), exitCode: 1 };
   }
@@ -190,7 +247,27 @@ export function renderZeroDep(result) {
       : c.red(`${r.runtimeDeps} runtime dep${r.runtimeDeps === 1 ? '' : 's'}`),
     r.devDeps ? c.dim(`(${r.devDeps} dev)`) : '',
   ]);
+  // A language with source but no manifest cannot be verified at a glance,
+  // which is what the rule asks for - so it is a failure with a fix attached.
+  for (const m of missing) {
+    rows.push([
+      '  ' + c.red('FAIL'),
+      m.expected,
+      c.red('missing'),
+      c.dim(`${m.files} ${m.language} file${m.files === 1 ? '' : 's'} present`),
+    ]);
+  }
   out.push(...columns(rows));
+
+  if (missing.length) {
+    out.push('');
+    for (const m of missing) {
+      out.push(
+        '    ' +
+          c.dim(`add an empty ${m.expected} so the empty manifest is verifiable on sight`),
+      );
+    }
+  }
 
   for (const r of result.rows.filter((x) => !x.pass)) {
     out.push('');
@@ -202,11 +279,38 @@ export function renderZeroDep(result) {
     );
   }
 
+  // The second half of the rule: source that was copied rather than written.
+  // Reported as files to read, never as a verdict - the tool cannot know who
+  // typed a line, and saying otherwise would be an accusation it cannot back.
+  const vendored = result.vendored ?? [];
+  if (vendored.length) {
+    out.push('');
+    out.push(
+      '  ' + c.yellow(c.bold('REVIEW')) + '  ' + c.dim('source that does not read as hand-written'),
+    );
+    const rows = [];
+    for (const suspect of vendored.slice(0, 10)) {
+      rows.push(['    ' + c.yellow(suspect.file), c.dim(`:${suspect.signals[0].line}`)]);
+      for (const signal of suspect.signals) rows.push(['', c.dim('      ' + signal.why)]);
+    }
+    out.push(...columns(rows));
+    if (vendored.length > 10) out.push(c.dim(`    ...and ${vendored.length - 10} more files`));
+    out.push('');
+    out.push(
+      '  ' +
+        c.dim(
+          'Signals, not proof. Vendored source must be disclosed in STDLIB.md;\n  undisclosed, it scores against you.',
+        ),
+    );
+  }
+
   out.push('');
   out.push(
     '  ' +
       (result.pass
-        ? c.green('empty manifest verified')
+        ? vendored.length
+          ? c.yellow(`empty manifest verified - ${vendored.length} file${vendored.length === 1 ? '' : 's'} to review`)
+          : c.green('empty manifest verified, no vendored source detected')
         : c.red('this repository would not pass the rule')),
   );
   out.push('');
