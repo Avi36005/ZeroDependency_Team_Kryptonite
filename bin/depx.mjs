@@ -7,14 +7,14 @@
 
 import { parseArgs } from 'node:util';
 import { analyze, verifyZeroDep } from '../src/core.mjs';
-import { renderReport, renderZeroDep, setColor, c } from '../src/report.mjs';
+import { renderReport, renderZeroDep, setColor, columns, c } from '../src/report.mjs';
 import { LANGUAGES } from '../src/lang/index.mjs';
 
 const VERSION = '0.1.0';
 
 const COMMANDS = {
   check: 'every finding: ghosts, broken, phantom, replaceable, dead (default)',
-  ghosts: 'only imports that resolve to nothing - the slopsquat surface',
+  ghosts: 'only imports nothing here resolves - the slopsquat candidates',
   phantom: 'only imports that are installed but never declared',
   dead: 'only declared packages that are never imported',
   replace: 'only packages the standard library already ships',
@@ -108,11 +108,15 @@ async function main(argv) {
   path ??= '.';
 
   if (command === 'langs') {
-    const rows = LANGUAGES.map((l) => {
-      const tier = l.ghostCapable === false ? c.yellow('tier 3') : c.green(`tier ${l.tier}`);
-      const detail = l.ghostCapable === false ? c.dim(l.reason) : c.dim('full ghost detection');
-      return `    ${l.name.padEnd(22)} ${tier}  ${detail}`;
-    }).join('\n');
+    // columns() measures display width, so a name longer than the assumed
+    // padding still lines up - padEnd would run the columns together.
+    const rows = columns(
+      LANGUAGES.map((l) => [
+        '    ' + l.name,
+        l.ghostCapable === false ? c.yellow('tier 3') : c.green(`tier ${l.tier}`),
+        c.dim(l.ghostCapable === false ? l.reason : 'full ghost detection'),
+      ]),
+    ).join('\n');
     process.stdout.write(`\n  ${c.bold('SUPPORTED LANGUAGES')}\n${rows}\n\n`);
     return 0;
   }
@@ -139,24 +143,36 @@ async function main(argv) {
   }
 
   const result = await analyze(path, { include });
+  const only = { ghosts: 'ghost', phantom: 'phantom', dead: 'dead', replace: 'replaceable' }[command] ?? null;
 
   if (values.json) {
-    process.stdout.write(JSON.stringify(toJson(result), null, 2) + '\n');
-    return result.findings.some((f) => f.type === 'ghost' || f.type === 'broken') ? 1 : 0;
+    process.stdout.write(JSON.stringify(toJson(result, only), null, 2) + '\n');
+    // Same rule as the text report: the exit code answers the question the
+    // subcommand asked, not one the user filtered out.
+    const inScope = only ? result.findings.filter((f) => f.type === only) : result.findings;
+    return inScope.some((f) => f.type === 'ghost' || f.type === 'broken') ? 1 : 0;
   }
 
-  const only = { ghosts: 'ghost', phantom: 'phantom', dead: 'dead', replace: 'replaceable' }[command] ?? null;
   const { text, exitCode } = renderReport(result, { only });
   if (!values.quiet) process.stdout.write(text);
   return exitCode;
 }
 
-/** Sets and adapter objects are not JSON-serialisable; flatten for --json. */
-function toJson(result) {
+/**
+ * Sets and adapter objects are not JSON-serialisable; flatten for --json.
+ * `only` applies the same subcommand filter the text report uses, so
+ * `depx ghosts --json` and `depx ghosts` describe the same findings.
+ */
+function toJson(result, only = null) {
+  const findings = only ? result.findings.filter((f) => f.type === only) : result.findings;
   return {
     root: result.root,
     filesScanned: result.filesScanned,
     filesSkipped: result.filesSkipped,
+    // Everything the text report can say has to be reachable from --json too,
+    // or a CI consumer never learns why a result looked surprising.
+    warnings: result.warnings ?? [],
+    skippedProjects: result.skippedProjects ?? [],
     languages: result.languages.map((l) => ({
       id: l.lang.id,
       name: l.lang.name,
@@ -166,12 +182,16 @@ function toJson(result) {
       importedPackages: l.importCount,
       declared: l.manifest ? [...l.manifest.declared] : null,
     })),
-    findings: result.findings.map((f) => ({
+    findings: findings.map((f) => ({
       type: f.type,
       language: f.language,
       name: f.name,
       detail: f.detail,
       since: f.since ?? null,
+      note: f.note ?? null,
+      // dead only: true when a framework or build tool is expected to load
+      // this rather than your source importing it.
+      expected: f.expected ?? false,
       sites: f.sites.map((s) => ({ file: s.file, line: s.line, column: s.column, kind: s.kind })),
     })),
   };
