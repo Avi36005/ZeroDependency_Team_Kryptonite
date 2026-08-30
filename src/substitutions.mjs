@@ -97,6 +97,42 @@ export const SUBSTITUTIONS = {
   ],
 };
 
+// Packages that are genuinely never imported by your source and are supposed
+// not to be: a framework loads them, or a build tool names them in a config
+// file as a bare string. Reporting these as dead is technically true and
+// practically a false alarm - the reason `depcheck` ships a special-cases
+// list too. We keep the finding, because "not imported" is a fact, and
+// annotate it so nobody deletes react-dom on our say-so.
+const TOOLING = {
+  javascript: [
+    { re: /^react-dom$/, why: 'the React renderer - loaded by your framework, not imported by your code' },
+    { re: /^react-native$|^expo(-|$)|^@expo\//, why: 'loaded by the React Native / Expo runtime' },
+    { re: /^(next|nuxt|vite|astro|remix)$/, why: 'the framework itself - it runs your code, your code does not import it' },
+    { re: /^(autoprefixer|postcss|cssnano)$/, why: 'named as a string in your PostCSS config, not imported' },
+    { re: /^tailwindcss(-|$)|^@tailwindcss\//, why: 'named in your Tailwind or PostCSS config, not imported' },
+    { re: /^(eslint|prettier)(-|$)|^@eslint\//, why: 'a linter or formatter, invoked by tooling rather than imported' },
+    { re: /^(typescript|ts-node|tsx)$/, why: 'a compiler, invoked by tooling rather than imported' },
+    { re: /^@types\//, why: 'types only - erased at build time and never imported at runtime' },
+    { re: /^(geist|@fontsource\/)/, why: 'a font package, usually referenced from CSS rather than imported' },
+    { re: /^(babel-|@babel\/)/, why: 'a build-time transform, named in config rather than imported' },
+  ],
+  python: [
+    { re: /^(setuptools|wheel|pip|build)$/, why: 'packaging machinery, used by the build rather than imported' },
+    { re: /^(ruff|black|flake8|mypy|isort)$/, why: 'a linter or formatter, invoked as a command rather than imported' },
+  ],
+};
+
+/**
+ * Why a declared-but-unimported package is expected to be unimported.
+ * @returns {string | null}
+ */
+export function toolingReason(languageId, packageName) {
+  for (const row of TOOLING[languageId] ?? []) {
+    if (row.re.test(packageName)) return row.why;
+  }
+  return null;
+}
+
 /** @returns {Substitution | null} */
 export function substitutionFor(languageId, packageName) {
   const rows = SUBSTITUTIONS[languageId];
