@@ -1,0 +1,25 @@
+$ cat deps-proof.txt
+
+$ cat package.json | grep -A1 dependencies
+  "dependencies": {}
+}
+
+$ ls node_modules
+ls: node_modules: No such file or directory
+
+$ grep -rn "from '[^n.]" bin src tools   # any import not node: and not relative
+(no matches - every import is node: or relative)
+
+$ node bin/depx.mjs zero-dep .
+
+  Zero Dependency rule check
+
+  PASS  package.json  no runtime dependencies
+
+  empty manifest verified, no vendored source detected
+
+$ make verify   # reproducible build
+build 1: c95ba6d4ff0208b2cc63818c1f75303dce38f51b6db6a7aa326b9203168f266b
+build 2: c95ba6d4ff0208b2cc63818c1f75303dce38f51b6db6a7aa326b9203168f266b
+reproducible: byte-identical
+bundle matches source tree

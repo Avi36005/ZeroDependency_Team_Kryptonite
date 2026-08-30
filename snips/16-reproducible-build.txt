@@ -1,0 +1,14 @@
+$ make verify
+build 1: c95ba6d4ff0208b2cc63818c1f75303dce38f51b6db6a7aa326b9203168f266b
+build 2: c95ba6d4ff0208b2cc63818c1f75303dce38f51b6db6a7aa326b9203168f266b
+reproducible: byte-identical
+bundle matches source tree
+
+$ shasum -a 256 dist/depx.mjs
+c95ba6d4ff0208b2cc63818c1f75303dce38f51b6db6a7aa326b9203168f266b  dist/depx.mjs
+
+$ wc -l dist/depx.mjs
+2813 dist/depx.mjs
+
+$ grep -c "^import .*node:" dist/depx.mjs   # every import is a builtin
+4

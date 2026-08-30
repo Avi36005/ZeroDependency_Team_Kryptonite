@@ -1,0 +1,27 @@
+$ make test
+▶ minified detection needs more than one long line
+  ✔ an inline SVG path does not read as minified (1.942125ms)
+  ✔ several long class strings do not read as minified (1.200708ms)
+  ✔ a genuinely minified file is still caught (0.716625ms)
+✔ minified detection needs more than one long line (3.955167ms)
+▶ gitignore matcher
+  ✔ matches a bare name at any depth (6.211917ms)
+  ✔ anchors a pattern containing a slash (1.556375ms)
+  ✔ applies a directory-only pattern only to directories (2.290667ms)
+  ✔ lets a later negation re-include a file, as git does (1.309625ms)
+  ✔ supports a double-star wildcard (1.143041ms)
+  ✔ ignores blank lines and comments (1.21225ms)
+✔ gitignore matcher (14.498917ms)
+▶ display width
+  ✔ ignores ANSI escapes (0.128417ms)
+  ✔ counts wide characters as two columns (0.067541ms)
+  ✔ aligns columns using display width, not string length (0.142ms)
+✔ display width (0.447917ms)
+ℹ tests 159
+ℹ suites 42
+ℹ pass 159
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3036.366792
