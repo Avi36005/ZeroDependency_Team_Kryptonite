@@ -133,11 +133,55 @@ would not be safe in a Track B submission.
 
 **Where:** [`test/`](test/)
 
-32 tests across 8 suites, using `describe`/`test` and strict assertions. No
+159 tests across 42 suites, using `describe`/`test` and strict assertions. No
 config file, no transform step, no watch-mode dependency. `npm test` runs
 `node --test`.
 
-## 12. `semver` → not needed at all
+The resolution suite builds throwaway projects in `os.tmpdir()` with
+`fs.mkdtemp` and analyses them end to end, so the tests exercise the real
+walker and the real manifest readers rather than a mocked filesystem — again
+without a fixture or temp-directory package.
+
+## 12. `esbuild` / `rollup` / `webpack` / `ncc` → `tools/bundle.mjs`
+
+**Where:** [`tools/bundle.mjs`](tools/bundle.mjs)
+
+To ship one file, the reflex is to install a bundler. We need exactly one
+feature of one — inline a module graph we control — and that graph is nine
+modules with no dynamic imports, no CSS, no tree shaking and nothing to
+minify. That is a topological sort and a few textual rewrites: about 190
+lines against esbuild's ~10 MB.
+
+Each module is emitted as an IIFE returning its exports, which preserves
+module scope. That is not decoration: `scanImports`, `normalize` and
+`readManifest` are each defined in five different language adapters, and flat
+concatenation would silently let one overwrite the others. A test asserts the
+same-named functions still coexist in the output.
+
+The output is byte-identical across runs — modules are emitted in a
+deterministic post-order, builtin imports are merged and sorted, and nothing
+records a timestamp, a build path or a nonce. `make verify` builds twice,
+compares the hashes, and then diffs the bundle's output against the source
+tree's to prove the build did not change behaviour.
+
+## 13. `license-checker` / `oss-attribution-generator` → `src/vendor.mjs`
+
+**Where:** [`src/vendor.mjs`](src/vendor.mjs)
+
+The rules close the vendoring loophole in prose — copying a library into
+`src/` is "a dependency with extra steps" — but nothing checks it, because
+the manifest still reads `{}`. So `depx zero-dep` reads the code instead,
+looking for the marks source carries when it was not typed by the person
+shipping it: source-map comments, bundler-preserved `@license` pragmas,
+generated-file banners, UMD wrappers, third-party licence headers, and lines
+too long to have been written by hand.
+
+Licence and banner markers are matched against *comment text only*, extracted
+by a small comment lexer. That is more precise than scanning raw source, and
+it is the reason the detector does not flag itself — its own patterns live in
+its code, not its prose. There is a test for exactly that.
+
+## 14. `semver` → not needed at all
 
 Worth recording as a substitution *avoided*. We report the version string a
 manifest declares but never compare ranges, so the dependency never became
@@ -158,6 +202,14 @@ answer one question: *which strings are import specifiers?* We answered it with
 a 150-line lexer that passes decoy cases those tools also handle, and shipped a
 dependency scanner with no dependencies — which is the entire point of the
 exercise.
+
+The lexer is tested against the decoys those parsers exist to handle: an
+import inside a line comment, inside a block comment, inside a string, inside
+a template literal, inside a regex literal, and a `/` that is division rather
+than a regex — plus the webpack magic-comment form
+`import(/* webpackChunkName: "x" */ 'pkg')`, where the specifier follows a
+comment that has just been masked away. All eight real import forms are
+found and all six decoys rejected.
 
 Combined weekly downloads of the packages named across this document exceed
 **400 million**.
