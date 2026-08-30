@@ -41,6 +41,33 @@ export function normalize(specifier) {
   return specifier.replaceAll('_', '-');
 }
 
+/**
+ * Module names this crate defines for itself. `mod utils;` plus
+ * `use utils::helper;` is the normal way to split a crate across files, and
+ * `utils` must never be judged against Cargo.toml.
+ */
+export function scanLocals(src) {
+  const { masked } = mask(src, SPEC);
+  const names = [];
+  for (const m of masked.matchAll(/\b(?:pub(?:\([^)]*\))?\s+)?mod\s+([A-Za-z_]\w*)/g)) {
+    names.push(m[1]);
+  }
+  return names;
+}
+
+/** src/utils.rs defines module `utils`; src/net/mod.rs defines `net`. */
+function localModulesFromPath(rel) {
+  const parts = rel.split('/');
+  const file = parts.pop();
+  if (!file.endsWith('.rs')) return [];
+  const stem = file.slice(0, -3);
+  if (stem === 'mod' || stem === 'lib' || stem === 'main') {
+    const dir = parts.pop();
+    return dir && dir !== 'src' ? [dir] : [];
+  }
+  return [stem];
+}
+
 export async function readManifest(dir) {
   let text;
   try {
@@ -54,6 +81,10 @@ export async function readManifest(dir) {
     dev: new Set(Object.keys(toml['dev-dependencies'] ?? {})),
     optional: new Set(Object.keys(toml['build-dependencies'] ?? {})),
     peer: new Set(),
+    // A crate's own name. A binary target under src/bin/ imports the library
+    // by that name - `use croniter_core::api` inside the croniter-core crate
+    // - which is the standard bin+lib layout, not a missing dependency.
+    self: toml.package?.name ? String(toml.package.name) : null,
   };
 }
 
@@ -67,6 +98,8 @@ export default {
   installDirs: [],
   hyphenInsensitive: true,
   scanImports,
+  scanLocals,
+  localModulesFromPath,
   normalize,
   readManifest,
 };
