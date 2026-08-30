@@ -105,7 +105,13 @@ export const java = {
   manifestFiles: ['pom.xml', 'build.gradle', 'build.gradle.kts'],
   installDirs: [],
   scanImports: scanWith(/^\s*import\s+(?:static\s+)?([\w.]+)/gm, 'import'),
-  normalize: (s) => s,
+  // Platform namespaces are not dependencies; everything else folds to its
+  // top two segments so a package is counted once, not once per class.
+  normalize: (s) => {
+    const parts = s.split('.');
+    if (['java', 'javax', 'jdk', 'kotlin'].includes(parts[0])) return null;
+    return parts.slice(0, 2).join('.');
+  },
   readManifest: readMavenGradle,
 };
 
@@ -119,7 +125,11 @@ export const csharp = {
   manifestFiles: ['packages.config', '.csproj'],
   installDirs: [],
   scanImports: scanWith(/^\s*using\s+(?:static\s+)?([\w.]+)\s*;/gm, 'using'),
-  normalize: (s) => s,
+  normalize: (s) => {
+    const parts = s.split('.');
+    if (parts[0] === 'System') return null; // the BCL is not a dependency
+    return parts.slice(0, 2).join('.');
+  },
   readManifest: readCsproj,
 };
 
