@@ -1,0 +1,11 @@
+$ depx check snips/fixtures/monorepo
+
+  scanned 0 files in 0 languages
+  2 nested projects not descended into: client, server
+  each has its own manifest - run depx inside it to check it
+
+  no source files found here - nothing was analysed
+
+  nothing to report
+$ echo $?
+0

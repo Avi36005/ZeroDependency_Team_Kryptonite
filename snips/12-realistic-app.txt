@@ -1,0 +1,26 @@
+$ depx check snips/fixtures/realistic-app
+
+  scanned 2 files in 1 language
+  JavaScript / TypeScript: 2 files, 4 imported packages, 7 declared
+
+  BROKEN  relative imports pointing at nothing
+    ./removed-module.js  src/app.jsx:5:30
+
+  UNDECLARED  imported but not in the manifest - install tree absent, so unverified
+    async-retry-helper-pro  src/app.jsx:6:19
+
+  REPLACEABLE  the standard library already ships this
+    chalk  -> util.styleText()  (node 20.12)
+                 honours NO_COLOR and TTY detection for you
+    uuid   -> crypto.randomUUID()  (node 14.17)
+                 v4 only
+
+  DEAD  declared, never imported
+    date-fns             declared but no import of it was found
+    react-dom            the React renderer - loaded by your framework, not imported by your code
+    autoprefixer         named as a string in your PostCSS config, not imported
+    tailwindcss-animate  named in your Tailwind or PostCSS config, not imported
+
+  1 broken / 1 undeclared / 2 replaceable / 4 dead
+$ echo $?
+1

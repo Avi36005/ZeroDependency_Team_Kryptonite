@@ -1,0 +1,30 @@
+$ depx check fixtures/messy/src/app.js
+
+  scanned 1 files in 1 language
+  JavaScript / TypeScript: 1 files, 7 imported packages, 6 declared
+
+  GHOSTS  imported, but nothing here provides them
+    async-retry-utils          src/app.js:5:34
+    json-schema-validator-pro  src/app.js:6:26
+
+  BROKEN  relative imports pointing at nothing
+    ./does-not-exist.js  src/app.js:9:25
+
+  PHANTOM  imported and installed, never declared
+    ms  src/app.js:7:16
+
+  REPLACEABLE  the standard library already ships this
+    chalk     -> util.styleText()  (node 20.12)
+                    honours NO_COLOR and TTY detection for you
+    minimist  -> util.parseArgs()  (node 18.3)
+                    strings and booleans only; subcommands are yours
+    uuid      -> crypto.randomUUID()  (node 14.17)
+                    v4 only
+
+  2 ghosts / 1 broken / 1 phantom / 3 replaceable
+
+  Nothing local provides these, so the build breaks on a clean checkout.
+  Check each name against its registry before shipping: one that is not
+  there either is a hallucinated import, and that is the slopsquat window.
+$ echo $?
+1
