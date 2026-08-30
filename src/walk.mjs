@@ -8,10 +8,12 @@ import { join, relative, sep } from 'node:path';
 
 // Directories that never contain first-party source. Walking them is the
 // single biggest waste of time on a real repo, so they are cut unconditionally.
+// `bin/` is deliberately NOT here: Node CLIs keep real source there (this
+// tool included), and actual binaries are caught by the NUL-byte probe.
 const ALWAYS_SKIP = new Set([
   '.git', 'node_modules', '.venv', 'venv', '__pycache__', 'vendor',
   'target', 'dist', 'build', 'out', '.next', '.nuxt', '.cache',
-  'bin', 'obj', '.gradle', '.mypy_cache', '.pytest_cache', '.tox',
+  'obj', '.gradle', '.mypy_cache', '.pytest_cache', '.tox',
 ]);
 
 /**
@@ -115,19 +117,23 @@ export async function isBinary(path) {
  * Yield every source-file path under `root`, skipping ignored and binary files.
  *
  * @param {string} root
- * @param {{ maxBytes?: number, boundaries?: string[] }} [options]
+ * @param {{ maxBytes?: number, boundaries?: string[], skipped?: string[] }} [options]
  *   boundaries: filenames that mark a nested project. A subdirectory
  *   containing one is a different project with a different manifest, so we do
  *   not descend into it - otherwise its imports get judged against our
  *   manifest and every finding is noise.
+ *   skipped: an array the walker records each skipped project onto. Without
+ *   it a monorepo whose packages all live in subdirectories reports "no
+ *   source files found" and looks broken, when in fact every package was
+ *   deliberately left for a separate run.
  */
 export async function* walk(root, options = {}) {
-  const { maxBytes = 2 * 1024 * 1024, boundaries = [] } = options;
+  const { maxBytes = 2 * 1024 * 1024, boundaries = [], skipped = null } = options;
   const rules = await loadIgnoreFile(root);
-  yield* walkDir(root, root, rules, maxBytes, new Set(boundaries));
+  yield* walkDir(root, root, rules, maxBytes, new Set(boundaries), skipped);
 }
 
-async function* walkDir(dir, root, rules, maxBytes, boundaries) {
+async function* walkDir(dir, root, rules, maxBytes, boundaries, skipped) {
   let entries;
   try {
     entries = await opendir(dir);
@@ -142,8 +148,11 @@ async function* walkDir(dir, root, rules, maxBytes, boundaries) {
     if (entry.isDirectory()) {
       if (ALWAYS_SKIP.has(entry.name)) continue;
       if (isIgnored(rules, rel, true)) continue;
-      if (await isProjectBoundary(full, boundaries)) continue;
-      yield* walkDir(full, root, rules, maxBytes, boundaries);
+      if (await isProjectBoundary(full, boundaries)) {
+        skipped?.push(rel);
+        continue;
+      }
+      yield* walkDir(full, root, rules, maxBytes, boundaries, skipped);
     } else if (entry.isFile()) {
       if (isIgnored(rules, rel, false)) continue;
       yield { path: full, rel };
