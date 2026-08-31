@@ -8,6 +8,11 @@ regeneration will say so.
 Colour is stripped (`--no-color`) so the files stay readable in any viewer.
 Run the same command in a terminal to see it in colour.
 
+One exception to "real terminal output": `21-tui.txt` holds frames from
+`renderFrame()`, because `depx tui` refuses to run in a pipe. It is the same
+pure function the live interface draws with, so the frames are what the screen
+shows, but they were produced without a terminal.
+
 ## The tour
 
 | File | Shows |
@@ -39,7 +44,8 @@ does not. Every other tool in this category stops at the manifest.
 | [20-vendored.txt](20-vendored.txt) | `depx vendored` finding copied source outside the rule check |
 | [19-depxignore.txt](19-depxignore.txt) | `.depxignore` suppressing two findings while two real ones still report |
 | [14-json.txt](14-json.txt) | `--json` for CI, including warnings, suppressions and skipped projects |
-| [07-langs.txt](07-langs.txt) | ten languages and the tier each is detected at |
+| [07-langs.txt](07-langs.txt) | twelve languages across nine adapters, and the tier each is detected at |
+| [21-tui.txt](21-tui.txt) | `depx tui` — three frames of the interactive interface |
 | [11-help.txt](11-help.txt) | the help text |
 
 ## Receipts
@@ -48,7 +54,7 @@ does not. Every other tool in this category stops at the manifest.
 |---|---|
 | [15-performance.txt](15-performance.txt) | 6,000 files in 0.70 s |
 | [16-reproducible-build.txt](16-reproducible-build.txt) | two builds, one hash, and the bundle behaving like the source tree |
-| [17-test-suite.txt](17-test-suite.txt) | 159 tests across 42 suites |
+| [17-test-suite.txt](17-test-suite.txt) | 207 tests across 52 suites |
 | [18-deps-proof.txt](18-deps-proof.txt) | the dependency proof a judge can confirm in five seconds |
 
 ## Fixtures

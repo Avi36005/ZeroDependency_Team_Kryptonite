@@ -18,6 +18,7 @@ dependency manifest.
 - [Installation](#installation)
 - [Quick start](#quick-start)
 - [Usage](#usage)
+- [The interactive interface](#the-interactive-interface)
 - [Findings](#findings)
 - [Suppressing findings](#suppressing-findings)
 - [Language support](#language-support)
@@ -184,6 +185,7 @@ by walking up from the file.
 | Command | Reports |
 |---|---|
 | `check [path]` | all findings (default) |
+| `tui [path]` | the same findings, browsable — see [below](#the-interactive-interface) |
 | `ghosts [path]` | imports that nothing in the project resolves |
 | `phantom [path]` | imports installed but never declared |
 | `dead [path]` | declared packages that are never imported |
@@ -230,6 +232,66 @@ This repository's own workflow, [`.github/workflows/ci.yml`](.github/workflows/c
 runs the four commands a reviewer would run by hand — the test suite, the
 zero-dependency self-check, the reproducible build, and `depx` against its own
 source — using the runner's Node and installing nothing.
+
+---
+
+## The interactive interface
+
+The report is built to be read once, in CI or in a scrollback buffer. On a
+repository with fifty findings it is a wall. `depx tui` renders the same
+analysis as a screen you can move around in:
+
+```
+  depx · messy                                             4 files · 3 langs
+  ──────────────────────────────────────────────────────────────────────────
+    GHOSTS (3)          │   chalk                            src/app.js:1:19
+    BROKEN (1)          │ › minimist                         src/app.js:2:22
+    PHANTOM (1)         │   uuid                             src/app.js:3:20
+    UNDECLARED (2)      │   github.com/google/uuid         gosrc/main.go:7:2
+  ▸ REPLACEABLE (6)     │   github.com/sirupsen/logrus     gosrc/main.go:8:2
+    DEAD (4)            │   requests                       pysrc/main.py:2:8
+                        │
+                        │
+                        │
+                        │
+  ──────────────────────────────────────────────────────────────────────────
+  -> util.parseArgs() (node 18.3) strings and booleans only; subcommands are
+  yours
+
+  ──────────────────────────────────────────────────────────────────────────
+  ↑↓ move   ←→ category   ⏎ open   / filter   q quit
+```
+
+| Key | Action |
+|---|---|
+| `↑` `↓` / `k` `j` | move through the findings in the selected category |
+| `←` `→` / `h` `l` / `tab` | change category; the list wraps in both directions |
+| `g` / `G` | first / last finding |
+| `/` | filter by name — `⏎` keeps the filter, `esc` clears it |
+| `⏎` | open the file at the line in `$VISUAL` or `$EDITOR` |
+| `q` / `esc` / `ctrl-c` | quit |
+
+The exit code is the one `depx check` would have returned, so quitting the
+interface still answers the question a script would have asked.
+
+`tui` needs a terminal on both ends. Piped or redirected, it exits `2` and
+names `depx check` rather than quietly rendering something else — CI wants the
+batch report, and a command that changes what it does based on where its output
+is going is a command you cannot trust in a script.
+
+### How it is tested
+
+The state machine and the frame renderer are pure functions of `(state, size)`:
+`reduce(state, key)` returns the next state, and `renderFrame(state, {cols,
+rows})` returns an array of exactly `rows` strings of exactly `cols` display
+width. Only `runTui()` touches stdin, stdout or the process.
+
+That split is what makes the interface testable. Thirty-three tests drive every
+key it responds to and assert on the resulting frames as strings, with no
+terminal involved — including that the frame stays exactly the requested size
+at four terminal sizes and through every navigation state, that the selected
+row is marked without relying on colour, and that the alternate screen is
+always left again on the way out.
 
 ---
 
@@ -481,8 +543,8 @@ byte-identical across runs:
 
 ```
 $ make verify
-build 1: b9f58e2ab18ecd14ce38236f7b559327446691a1bc24560ce0884e46ff5d6865
-build 2: b9f58e2ab18ecd14ce38236f7b559327446691a1bc24560ce0884e46ff5d6865
+build 1: 390db6ea1762c96be426d27c602054cff94e7326c7b221790f1facd81cbca3d4
+build 2: 390db6ea1762c96be426d27c602054cff94e7326c7b221790f1facd81cbca3d4
 reproducible: byte-identical
 bundle matches source tree
 ```
@@ -504,7 +566,7 @@ submission.
 | Target | Action |
 |---|---|
 | `make build` | syntax check and set the executable bit |
-| `make test` | run all 174 tests (`node --test`) |
+| `make test` | run all 207 tests (`node --test`) |
 | `make dist` | produce the single-file build |
 | `make verify` | build twice, compare hashes, diff behaviour against the source tree |
 | `make demo` | paced walkthrough, built to be screen-recorded (`DEMO_PAUSE=0` to run flat) |
@@ -519,6 +581,7 @@ bin/depx.mjs          command-line entry point: argument parsing and dispatch
 src/core.mjs          analysis engine: walk, scan, resolve, classify
 src/walk.mjs          directory traversal, .gitignore matching, binary detection
 src/report.mjs        terminal rendering: colour, width-aware columns, layout
+src/tui.mjs           the interactive interface: state machine, frame renderer
 src/mask.mjs          shared comment and string masker for non-JavaScript languages
 src/toml.mjs          TOML subset reader for Cargo.toml and pyproject.toml
 src/vendor.mjs        vendored-source detection
@@ -542,10 +605,10 @@ Adding a language means adding one module to `src/lang/` and registering it in
 make test
 ```
 
-174 tests across 46 suites, using `node:test` and `node:assert/strict` with no
+207 tests across 52 suites, using `node:test` and `node:assert/strict` with no
 configuration file and no test framework. The resolution, vendoring and CLI
 suites construct throwaway projects under `os.tmpdir()` and analyse them end to
-end; 77 of those invoke `bin/depx.mjs` as a child process and assert on stdout
+end; 79 of those invoke `bin/depx.mjs` as a child process and assert on stdout
 and the exit code, exercising the walker, the manifest readers, the report and
 the exit codes exactly as a user or CI job would.
 

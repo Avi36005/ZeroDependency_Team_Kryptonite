@@ -133,7 +133,7 @@ would not be safe in a Track B submission.
 
 **Where:** [`test/`](test/)
 
-174 tests across 46 suites, using `describe`/`test` and strict assertions. No
+207 tests across 52 suites, using `describe`/`test` and strict assertions. No
 config file, no transform step, no watch-mode dependency. `npm test` runs
 `node --test`.
 
@@ -208,6 +208,38 @@ manifest declares but never compare ranges, so the dependency never became
 necessary. The cheapest package to replace is the one you notice you do not
 need.
 
+## 16. `ink` / `blessed` / `enquirer` / `ora` → `src/tui.mjs`
+
+**Where:** [`src/tui.mjs`](src/tui.mjs)
+
+`depx tui` is a full-screen interactive interface: an alternate screen, arrow
+keys, a live filter, a scrolling list and reflow on resize. The reflex here is
+`ink` — which is React, plus a reconciler, plus a Yoga layout engine compiled
+to WebAssembly, to draw a list you can arrow through in a terminal.
+
+Every piece of it is already in Node:
+
+| Need | Package normally installed | Standard library |
+|---|---|---|
+| Decode arrow keys and escape sequences | `keypress`, `ink` | `readline.emitKeypressEvents()` |
+| Read keys unbuffered | `blessed`, `enquirer` | `stdin.setRawMode(true)` |
+| Alternate screen, cursor hiding | `blessed`, `cli-cursor`, `ora` | `\x1b[?1049h` / `\x1b[?25l` |
+| Know the terminal size, and when it changes | `term-size`, `blessed` | `stdout.columns` / `rows`, the `resize` event |
+| Lay out two panes and wrap text | `ink`, Yoga (WASM) | `fit()` and `wrap()`, 30 lines over `displayWidth()` |
+| Highlight the selection | `chalk` | `util.styleText('inverse')` |
+
+The layout maths is the `displayWidth()` from item 4 doing a second job, and
+the category labels and colours are imported from `src/report.mjs` rather than
+restated, so the two interfaces cannot describe the same finding differently.
+
+The design decision worth recording is that the state machine and the frame
+renderer are **pure functions of `(state, size)`**. `reduce(state, key)`
+returns the next state, and `renderFrame(state, {cols, rows})` returns an array
+of exactly `rows` strings of exactly `cols` display width. Only `runTui()`
+touches stdin, stdout or the process — so 33 tests drive the entire interface
+with no terminal involved, asserting on frames as strings. Testing an `ink`
+interface normally means installing `ink-testing-library` too.
+
 ---
 
 ## Package Killer
@@ -237,7 +269,9 @@ Combined weekly downloads of the packages named across this document exceed
 ## Vendoring disclosure
 
 **None.** No third-party source is copied into this repository. Every line in
-`src/`, `bin/` and `test/` was written during the event window. The curated
+`src/`, `bin/` and `test/` was written during the event window - including the
+ANSI escape sequences in `src/tui.mjs`, which are values from the terminal
+specification rather than code taken from a library. The curated
 data tables — Python's standard-library module list, the Python
 import-to-distribution aliases, the Ruby standard-library list, and the
 substitution table in `src/substitutions.mjs` — are facts compiled from
