@@ -194,7 +194,7 @@ A symlink rather than `npm link`, deliberately: `npm link` would create a
 `node_modules` directory in a repository whose entire claim is that it does not
 have one.
 
-With that in place, `depx` on its own in a terminal opens the
+With that in place, `depx` and `depx <path>` in a terminal open the
 [interactive interface](#the-interactive-interface); everywhere else it is the
 batch report.
 
@@ -277,7 +277,7 @@ by walking up from the file.
 | Command | Reports |
 |---|---|
 | `check [path]` | all findings (default) |
-| `tui [path]` | the same findings, browsable — also what bare `depx` opens in a terminal |
+| `tui [path]` | the same findings, browsable — what `depx [path]` opens in a terminal |
 | `ghosts [path]` | imports that nothing in the project resolves |
 | `phantom [path]` | imports installed but never declared |
 | `dead [path]` | declared packages that are never imported |
@@ -331,12 +331,12 @@ source — using the runner's Node and installing nothing.
 
 The report is built to be read once, in CI or in a scrollback buffer. On a
 repository with fifty findings it is a wall. `depx tui` renders the same
-analysis as a screen you can move around in — and typing `depx` on its own in a
-terminal opens it:
+analysis as a screen you can move around in — and it is what `depx` opens when
+you do not name a subcommand:
 
 ```sh
-cd your-project
-depx
+depx                 # this directory
+depx ./some/project  # that one
 ```
 
 ```
@@ -411,14 +411,19 @@ from that, and together they are what makes it a search rather than a filter:
 
 ### Where it runs
 
-Bare `depx` opens the interface **only when both ends are a terminal**. In a
-pipe, a redirect, a CI job, or with `--json` or `--quiet`, it is the batch
-report exactly as before — and any explicit subcommand always is. `depx tui`
-asked for directly in a pipe exits `2` and names `depx check`.
+One rule decides it:
 
-The rule that decides this is that a script's behaviour must never depend on
-where its output is going. Only the no-argument interactive case changes, which
-is the one case where a person is definitely watching.
+> **No subcommand, in a terminal → the interface. Everything else → the report.**
+
+Naming a subcommand is the signal that you want that command's output, so
+`depx check .` is always text. So is a pipe, a redirect, a CI job, `--json` and
+`--quiet`. `depx` and `depx ./path` are "show me this project", and how it is
+shown depends on whether a person is looking. `depx tui` asked for directly in a
+pipe exits `2` and names `depx check`.
+
+The reason for the rule is that a script's behaviour must never depend on where
+its output is going — and every scripted invocation either names a subcommand
+or is not attached to a terminal.
 
 The exit code is the one `depx check` would have returned, so quitting the
 interface still answers the question a script would have asked.
@@ -430,7 +435,7 @@ The state machine and the frame renderer are pure functions of `(state, size)`:
 rows})` returns an array of exactly `rows` strings of exactly `cols` display
 width. Only `runTui()` touches stdin, stdout or the process.
 
-That split is what makes the interface testable. Forty-seven tests drive every
+That split is what makes the interface testable. Forty-nine tests drive every
 key it responds to and assert on the resulting frames as strings, with no
 terminal involved — including that the frame stays exactly the requested size
 at four terminal sizes and through every navigation state, that the selected
@@ -688,8 +693,8 @@ byte-identical across runs:
 
 ```
 $ make verify
-build 1: 8b0d00fab45aa7ba68ac83c6971336a1074ee5911f219066ffd014ad78ec92c6
-build 2: 8b0d00fab45aa7ba68ac83c6971336a1074ee5911f219066ffd014ad78ec92c6
+build 1: 26de8d1bd5fb05d17a12f3fb376bc6f9d4cf17cc0435f10378033f95a5110eb9
+build 2: 26de8d1bd5fb05d17a12f3fb376bc6f9d4cf17cc0435f10378033f95a5110eb9
 reproducible: byte-identical
 bundle matches source tree
 ```
@@ -711,7 +716,7 @@ submission.
 | Target | Action |
 |---|---|
 | `make build` | syntax check and set the executable bit |
-| `make test` | run all 221 tests (`node --test`) |
+| `make test` | run all 223 tests (`node --test`) |
 | `make dist` | produce the single-file build |
 | `make verify` | build twice, compare hashes, diff behaviour against the source tree |
 | `make demo` | paced walkthrough, built to be screen-recorded (`DEMO_PAUSE=0` to run flat) |
@@ -750,10 +755,10 @@ Adding a language means adding one module to `src/lang/` and registering it in
 make test
 ```
 
-221 tests across 53 suites, using `node:test` and `node:assert/strict` with no
+223 tests across 53 suites, using `node:test` and `node:assert/strict` with no
 configuration file and no test framework. The resolution, vendoring and CLI
 suites construct throwaway projects under `os.tmpdir()` and analyse them end to
-end; 81 of those invoke `bin/depx.mjs` as a child process and assert on stdout
+end; 83 of those invoke `bin/depx.mjs` as a child process and assert on stdout
 and the exit code, exercising the walker, the manifest readers, the report and
 the exit codes exactly as a user or CI job would.
 

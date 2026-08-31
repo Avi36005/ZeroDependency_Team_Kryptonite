@@ -53,7 +53,8 @@ ${rows}
     2  usage error
 
   ${c.bold('EXAMPLES')}
-    depx                          ${c.dim('# open the interface here (a pipe gets the report)')}
+    depx                          ${c.dim('# open the interface on this directory')}
+    depx ./some/project           ${c.dim('# open the interface on that one')}
     depx ghosts ./src             ${c.dim('# only hallucinated imports')}
     depx check . --lang go,rust   ${c.dim('# restrict languages')}
     depx zero-dep . --json        ${c.dim('# CI gate for the hackathon rule')}
@@ -103,21 +104,22 @@ async function main(argv) {
   }
 
   let [command, path] = positionals;
-  if (command && !(command in COMMANDS)) {
-    // `depx ./some/path` - a bare path with no command means `check`.
+  // Naming a subcommand is the signal that you want that command's output.
+  // Everything else - no arguments, or just a path - is "show me this
+  // project", and how it is shown depends on who is looking.
+  const named = Boolean(command) && command in COMMANDS;
+  if (command && !named) {
     path = command;
     command = 'check';
   }
-  const bare = positionals.length === 0;
   command ??= 'check';
   path ??= '.';
 
-  // `depx` on its own, in a terminal, opens the interface - the same reflex as
-  // running any interactive tool by name. Everywhere else it stays the batch
-  // report: a pipe, a redirect, a CI job, --json, --quiet, or any explicit
-  // subcommand. A script's behaviour must not depend on where its output goes,
-  // so only the no-argument interactive case changes.
-  if (bare && !values.json && !values.quiet && process.stdout.isTTY && process.stdin.isTTY) {
+  // One rule: no subcommand, in a terminal, opens the interface. `depx` and
+  // `depx ./some/path` both do. A pipe, a redirect, a CI job, --json, --quiet
+  // or any named subcommand is the batch report, so a script's behaviour never
+  // depends on where its output is going.
+  if (!named && !values.json && !values.quiet && process.stdout.isTTY && process.stdin.isTTY) {
     command = 'tui';
   }
 

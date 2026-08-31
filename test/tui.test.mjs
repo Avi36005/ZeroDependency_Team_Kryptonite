@@ -474,6 +474,22 @@ describe('tui end to end', () => {
     assert.doesNotMatch(stdout, /q quit/, 'no interface chrome reached the pipe');
   });
 
+  test('a bare path is the report in a pipe, the same as no arguments', async () => {
+    // `depx fixtures/messy` opens the interface for a person and prints the
+    // report for everything else; the child here has pipes, so: report.
+    const failed = await run('node', [join(REPO, 'bin/depx.mjs'), 'fixtures/messy', '--no-color'], {
+      cwd: REPO,
+    }).catch((e) => e);
+    assert.match(failed.stdout, /GHOSTS/);
+    assert.doesNotMatch(failed.stdout, /q quit/);
+    assert.equal(failed.code, 1, 'and still exits on the findings');
+  });
+
+  test('a named subcommand is never the interface', async () => {
+    const { stdout } = await run('node', [join(REPO, 'bin/depx.mjs'), 'langs', '--no-color'], { cwd: REPO });
+    assert.match(stdout, /SUPPORTED LANGUAGES/);
+  });
+
   test('--json and --quiet keep the report even on a terminal', async () => {
     const { stdout } = await run('node', [join(REPO, 'bin/depx.mjs'), '--json'], { cwd: REPO });
     assert.doesNotThrow(() => JSON.parse(stdout));

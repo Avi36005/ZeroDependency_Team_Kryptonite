@@ -30,7 +30,8 @@ $ depx --help
     2  usage error
 
   EXAMPLES
-    depx                          # open the interface here (a pipe gets the report)
+    depx                          # open the interface on this directory
+    depx ./some/project           # open the interface on that one
     depx ghosts ./src             # only hallucinated imports
     depx check . --lang go,rust   # restrict languages
     depx zero-dep . --json        # CI gate for the hackathon rule
