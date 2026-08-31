@@ -46,11 +46,47 @@ export function createState(result) {
 
 /** The findings in the selected category, narrowed by the filter. */
 export function visible(state) {
-  const group = state.groups[state.cat];
+  return matchesIn(state, state.cat);
+}
+
+/**
+ * The findings in one category that survive the filter. The filter is global -
+ * it applies to every category at once - which is what makes `/` behave like a
+ * search rather than a per-list narrowing.
+ */
+export function matchesIn(state, cat) {
+  const group = state.groups[cat];
   if (!group) return [];
   const query = state.filter.trim().toLowerCase();
   if (!query) return group.items;
   return group.items.filter((f) => f.name.toLowerCase().includes(query));
+}
+
+/** How many findings the current filter matches, everywhere. */
+export function totalMatches(state) {
+  return state.groups.reduce((n, _, i) => n + matchesIn(state, i).length, 0);
+}
+
+/**
+ * The next category in `step` direction that has something to show. While a
+ * filter is active this skips the empty ones, so arrowing across the
+ * categories walks the search results instead of stopping on blank panes.
+ */
+function nextCat(state, from, step) {
+  const n = state.groups.length;
+  if (!n) return 0;
+  for (let i = 1; i <= n; i++) {
+    const cat = (from + step * i + n * i) % n;
+    if (!state.filter.trim() || matchesIn({ ...state, cat }, cat).length) return cat;
+  }
+  return from;
+}
+
+/** After typing, land on a category that actually has a match. */
+function settle(state) {
+  if (!state.filter.trim() || matchesIn(state, state.cat).length) return state;
+  const cat = state.groups.findIndex((_, i) => matchesIn(state, i).length);
+  return cat === -1 ? state : { ...state, cat };
 }
 
 export function selected(state) {
@@ -87,7 +123,9 @@ export function reduce(state, key) {
     }
     next.item = 0;
     next.top = 0;
-    return { state: next, action: null };
+    // Typing jumps to wherever the match is: a search that made you guess the
+    // category first would not be a search.
+    return { state: settle(next), action: null };
   }
 
   const count = visible(state).length;
@@ -112,12 +150,12 @@ export function reduce(state, key) {
 
     // Categories wrap, because six of them in a row is a carousel, not a list.
     case name === 'left' || ch === 'h':
-      if (state.groups.length) next.cat = (state.cat - 1 + state.groups.length) % state.groups.length;
+      next.cat = nextCat(state, state.cat, -1);
       next.item = 0;
       next.top = 0;
       break;
     case name === 'right' || ch === 'l' || name === 'tab':
-      if (state.groups.length) next.cat = (state.cat + 1) % state.groups.length;
+      next.cat = nextCat(state, state.cat, 1);
       next.item = 0;
       next.top = 0;
       break;
@@ -241,7 +279,11 @@ export function renderFrame(state, { cols, rows }) {
   // Header: what was scanned, and how much of it.
   const langs = state.result.languages.length;
   const left = `depx · ${basename(state.result.root || '.')}`;
-  const right = `${state.result.filesScanned} files · ${langs} lang${langs === 1 ? '' : 's'}`;
+  const hits = state.filter.trim() ? totalMatches(state) : null;
+  const right =
+    hits === null
+      ? `${state.result.filesScanned} files · ${langs} lang${langs === 1 ? '' : 's'}`
+      : `${hits} match${hits === 1 ? '' : 'es'} for "${state.filter.trim()}"`;
   out.push('  ' + c.bold(fit(left, Math.max(0, inner - displayWidth(right)))) + c.dim(right));
   out.push(rule);
 
@@ -262,20 +304,30 @@ export function renderFrame(state, { cols, rows }) {
       out.push('  ' + (i === 1 ? (blank ? c.yellow(fit(msg, inner)) : c.green(fit(msg, inner))) : ' '.repeat(inner)));
     }
   } else {
+    const searching = Boolean(state.filter.trim());
     const items = visible(state);
     const top = reframe(state, bodyHeight);
     const listWidth = inner - LEFT_WIDTH - 2;
 
     for (let row = 0; row < bodyHeight; row++) {
-      // Left pane: the categories, with the selected one marked.
+      // Left pane: the categories. While a filter is active each one carries
+      // its own match count, so a search shows where its results are rather
+      // than only what the open category happens to hold.
       const group = state.groups[row];
       let leftCell;
       if (!group) {
         leftCell = ' '.repeat(LEFT_WIDTH);
       } else {
         const head = HEADINGS[group.type];
-        const label = `${row === state.cat ? '▸' : ' '} ${head.label} (${group.items.length})`;
-        leftCell = row === state.cat ? head.paint(c.bold(fit(label, LEFT_WIDTH))) : c.dim(fit(label, LEFT_WIDTH));
+        const hits = searching ? matchesIn(state, row).length : group.items.length;
+        const count = searching ? `${hits}/${group.items.length}` : `${group.items.length}`;
+        const label = `${row === state.cat ? '▸' : ' '} ${head.label} (${count})`;
+        leftCell =
+          row === state.cat
+            ? head.paint(c.bold(fit(label, LEFT_WIDTH)))
+            : searching && hits === 0
+              ? c.dim(fit(label, LEFT_WIDTH))
+              : (searching ? head.paint : c.dim)(fit(label, LEFT_WIDTH));
       }
 
       // Right pane: the findings in the selected category. The selected row
@@ -315,10 +367,10 @@ export function renderFrame(state, { cols, rows }) {
   // Footer: the filter prompt while typing, the key map otherwise.
   const footer =
     state.mode === 'filter'
-      ? c.cyan('/' + state.filter) + c.dim('▏  ⏎ keep   esc clear')
+      ? c.cyan('/' + state.filter) + c.dim('▏  ⏎ keep   esc clear   (searches every category)')
       : state.message
         ? c.yellow(state.message)
-        : c.dim('↑↓ move   ←→ category   ⏎ open   / filter   q quit') +
+        : c.dim('↑↓ move   ←→ category   / search   ⏎ open   q quit') +
           (state.filter ? c.cyan(`   /${state.filter}`) : '');
 
   // Every line in a frame is exactly `cols` wide, the footer included - and
@@ -328,7 +380,7 @@ export function renderFrame(state, { cols, rows }) {
   out.push(
     '  ' +
       (footerWidth > inner
-        ? c.dim(fit('↑↓ ←→ move   / filter   q quit', inner))
+        ? c.dim(fit('↑↓ ←→ move   / search   q quit', inner))
         : footer + ' '.repeat(inner - footerWidth)),
   );
 
