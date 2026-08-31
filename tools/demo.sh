@@ -65,7 +65,7 @@ run "$DEPX zero-dep ."
 run "$DEPX check ."
 
 beat "6. The receipts." \
-     "217 tests, and a single-file build that is byte-identical across runs."
+     "221 tests, and a single-file build that is byte-identical across runs."
 run "make test 2>&1 | grep -E '^. (tests|suites|pass|fail) '"
 run "make verify"
 

@@ -369,6 +369,31 @@ depx
 | `⏎` | open the file at the line in `$VISUAL` or `$EDITOR` |
 | `q` / `esc` / `ctrl-c` | quit |
 
+### When there is nothing to browse
+
+A clean repository has no list to arrow through, and a screen of empty rows
+reads as a broken program. The three no-findings outcomes each get a composed
+panel instead, and they stay distinct — because a repository whose findings
+were all suppressed is *configured*, not clean:
+
+```
+  depx · zerodependency-Team-Kryptonite                      27 files · 1 lang
+  ────────────────────────────────────────────────────────────────────────────
+
+                                    ✓  clean
+
+                  every import resolves, and nothing is unused
+
+                       27 files scanned across 1 language
+                      5 nested projects not descended into
+                each has its own manifest - open depx inside it
+
+  ────────────────────────────────────────────────────────────────────────────
+  q quit
+```
+
+The footer drops the keys that would do nothing.
+
 ### Search
 
 `/` searches **every category at once**, not the open one. Three things follow
@@ -405,7 +430,7 @@ The state machine and the frame renderer are pure functions of `(state, size)`:
 rows})` returns an array of exactly `rows` strings of exactly `cols` display
 width. Only `runTui()` touches stdin, stdout or the process.
 
-That split is what makes the interface testable. Forty-three tests drive every
+That split is what makes the interface testable. Forty-seven tests drive every
 key it responds to and assert on the resulting frames as strings, with no
 terminal involved — including that the frame stays exactly the requested size
 at four terminal sizes and through every navigation state, that the selected
@@ -663,8 +688,8 @@ byte-identical across runs:
 
 ```
 $ make verify
-build 1: 63627deaaa5df7524059f295a07566d82d3a1312b66aad39b302e568d545995b
-build 2: 63627deaaa5df7524059f295a07566d82d3a1312b66aad39b302e568d545995b
+build 1: 8b0d00fab45aa7ba68ac83c6971336a1074ee5911f219066ffd014ad78ec92c6
+build 2: 8b0d00fab45aa7ba68ac83c6971336a1074ee5911f219066ffd014ad78ec92c6
 reproducible: byte-identical
 bundle matches source tree
 ```
@@ -686,7 +711,7 @@ submission.
 | Target | Action |
 |---|---|
 | `make build` | syntax check and set the executable bit |
-| `make test` | run all 217 tests (`node --test`) |
+| `make test` | run all 221 tests (`node --test`) |
 | `make dist` | produce the single-file build |
 | `make verify` | build twice, compare hashes, diff behaviour against the source tree |
 | `make demo` | paced walkthrough, built to be screen-recorded (`DEMO_PAUSE=0` to run flat) |
@@ -725,7 +750,7 @@ Adding a language means adding one module to `src/lang/` and registering it in
 make test
 ```
 
-217 tests across 53 suites, using `node:test` and `node:assert/strict` with no
+221 tests across 53 suites, using `node:test` and `node:assert/strict` with no
 configuration file and no test framework. The resolution, vendoring and CLI
 suites construct throwaway projects under `os.tmpdir()` and analyse them end to
 end; 81 of those invoke `bin/depx.mjs` as a child process and assert on stdout

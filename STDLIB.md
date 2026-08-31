@@ -133,7 +133,7 @@ would not be safe in a Track B submission.
 
 **Where:** [`test/`](test/)
 
-217 tests across 53 suites, using `describe`/`test` and strict assertions. No
+221 tests across 53 suites, using `describe`/`test` and strict assertions. No
 config file, no transform step, no watch-mode dependency. `npm test` runs
 `node --test`.
 
@@ -236,7 +236,7 @@ The design decision worth recording is that the state machine and the frame
 renderer are **pure functions of `(state, size)`**. `reduce(state, key)`
 returns the next state, and `renderFrame(state, {cols, rows})` returns an array
 of exactly `rows` strings of exactly `cols` display width. Only `runTui()`
-touches stdin, stdout or the process — so 43 tests drive the entire interface
+touches stdin, stdout or the process — so 47 tests drive the entire interface
 with no terminal involved, asserting on frames as strings. Testing an `ink`
 interface normally means installing `ink-testing-library` too.
 

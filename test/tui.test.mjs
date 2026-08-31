@@ -28,6 +28,7 @@ import {
   editorCommand,
   fit,
   wrap,
+  centre,
 } from '../src/tui.mjs';
 
 const run = promisify(execFile);
@@ -296,22 +297,51 @@ describe('tui frame', () => {
     assert.match(renderFrame(createState(many), { cols: 100, rows: 20 }).join('\n'), /3 sites:/);
   });
 
-  test('a clean repository says so in the report\'s words', () => {
-    const frame = renderFrame(createState(result([])), { cols: 78, rows: 20 }).join('\n');
-    assert.match(frame, /clean - every import resolves and nothing is unused/);
+  test('a clean repository gets a composed panel, not a blank screen', () => {
+    const frame = renderFrame(createState(result([])), { cols: 78, rows: 20 });
+    const text = frame.join('\n');
+    assert.match(text, /✓  clean/);
+    assert.match(text, /every import resolves, and nothing is unused/);
+    assert.match(text, /4 files scanned across 1 language/);
+    // the thing this panel exists to prevent
+    const blank = frame.filter((l) => l.trim() === '').length;
+    assert.ok(blank < frame.length - 4, `screen is mostly empty: ${blank}/${frame.length} rows blank`);
   });
 
-  test('suppressed-only and empty scans keep the distinction the report draws', () => {
+  test('the three no-findings outcomes stay distinct', () => {
+    const clean = renderFrame(createState(result([])), { cols: 78, rows: 20 }).join('\n');
+    assert.match(clean, /✓  clean/);
+
     const suppressed = result([], { suppressed: [{ type: 'dead', name: 'left-pad' }] });
-    assert.match(
-      renderFrame(createState(suppressed), { cols: 78, rows: 20 }).join('\n'),
-      /nothing to report outside \.depxignore/,
-    );
-    const empty = result([], { filesScanned: 0 });
-    assert.match(
-      renderFrame(createState(empty), { cols: 78, rows: 20 }).join('\n'),
-      /no source files found here/,
-    );
+    const sframe = renderFrame(createState(suppressed), { cols: 78, rows: 20 }).join('\n');
+    assert.match(sframe, /nothing outside \.depxignore/);
+    assert.match(sframe, /every finding here is suppressed by \.depxignore \(1\)/);
+    assert.doesNotMatch(sframe, /✓  clean/, 'configured is not the same as clean');
+
+    const empty = result([], { filesScanned: 0, languages: [] });
+    const eframe = renderFrame(createState(empty), { cols: 78, rows: 20 }).join('\n');
+    assert.match(eframe, /nothing analysed/);
+    assert.match(eframe, /no source files were found/);
+  });
+
+  test('the clean panel names the nested projects it skipped', () => {
+    const nested = result([], { skippedProjects: ['client', 'server'] });
+    const frame = renderFrame(createState(nested), { cols: 78, rows: 20 }).join('\n');
+    assert.match(frame, /2 nested projects not descended into/);
+  });
+
+  test('the footer drops keys that do nothing when there is nothing to browse', () => {
+    const frame = renderFrame(createState(result([])), { cols: 78, rows: 20 }).join('\n');
+    assert.match(frame, /q quit/);
+    assert.doesNotMatch(frame, /↑↓ move/, 'no list to move through');
+  });
+
+  test('an empty frame is still exactly the size it was asked for', () => {
+    for (const [cols, rows] of [[60, 12], [78, 20], [130, 45]]) {
+      const frame = renderFrame(createState(result([])), { cols, rows });
+      assert.equal(frame.length, rows);
+      assert.ok(frame.every((l) => displayWidth(l) === cols), `${cols}x${rows}`);
+    }
   });
 
   test('an unusable terminal is told so rather than drawn on', () => {
@@ -335,6 +365,12 @@ describe('tui helpers', () => {
     assert.equal(displayWidth(fit('a-very-long-package-name', 10)), 10);
     assert.match(fit('a-very-long-package-name', 10), /…$/);
     assert.equal(displayWidth(fit('日本語のパッケージ', 8)), 8, 'wide characters count as two');
+  });
+
+  test('centre puts text in the middle at an exact width', () => {
+    assert.equal(centre('ab', 6), '  ab  ');
+    assert.equal(displayWidth(centre('odd', 8)), 8);
+    assert.equal(displayWidth(centre('', 5)), 5);
   });
 
   test('wrap breaks on spaces and hard-breaks a long token', () => {

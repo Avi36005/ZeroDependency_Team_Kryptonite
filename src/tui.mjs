@@ -207,6 +207,12 @@ export function fit(text, width) {
   return out + '…' + ' '.repeat(Math.max(0, width - used - 1));
 }
 
+/** Centre plain text in an exact width. */
+export function centre(text, width) {
+  const pad = Math.max(0, Math.floor((width - displayWidth(text)) / 2));
+  return fit(' '.repeat(pad) + text, width);
+}
+
 /** Greedy wrap on spaces, falling back to a hard break for a long token. */
 export function wrap(text, width) {
   if (width <= 0) return [];
@@ -280,28 +286,64 @@ export function renderFrame(state, { cols, rows }) {
   const langs = state.result.languages.length;
   const left = `depx · ${basename(state.result.root || '.')}`;
   const hits = state.filter.trim() ? totalMatches(state) : null;
+  const files = state.result.filesScanned;
   const right =
     hits === null
-      ? `${state.result.filesScanned} files · ${langs} lang${langs === 1 ? '' : 's'}`
+      ? `${files} file${files === 1 ? '' : 's'} · ${langs} lang${langs === 1 ? '' : 's'}`
       : `${hits} match${hits === 1 ? '' : 'es'} for "${state.filter.trim()}"`;
   out.push('  ' + c.bold(fit(left, Math.max(0, inner - displayWidth(right)))) + c.dim(right));
   out.push(rule);
 
-  const chrome = 5; // two rules, header, footer, and the detail separator
+  // header, rule, body, rule, footer - plus the detail strip and its own rule
+  // when there are findings to explain.
   const detailHeight = state.groups.length ? 3 : 0;
+  const chrome = state.groups.length ? 5 : 4;
   const bodyHeight = Math.max(1, rows - chrome - detailHeight);
 
   if (state.groups.length === 0) {
-    // Clean, or clean-once-suppressed. Same distinction the report draws.
+    // Nothing to browse. A screen of empty rows reads as a broken program, so
+    // the three no-findings outcomes each get a composed panel instead - and
+    // they stay distinct, because a repository whose findings were all
+    // suppressed is configured, not clean.
     const suppressed = (state.result.suppressed ?? []).length;
     const blank = state.result.filesScanned === 0;
-    const msg = blank
-      ? 'no source files found here - nothing was analysed'
+
+    const mark = blank ? c.yellow('!') : suppressed ? c.yellow('✓') : c.green('✓');
+    const headline = blank ? 'nothing analysed' : suppressed ? 'nothing outside .depxignore' : 'clean';
+    const detail = blank
+      ? 'no source files were found in this directory'
       : suppressed
-        ? 'nothing to report outside .depxignore'
-        : 'clean - every import resolves and nothing is unused';
+        ? `every finding here is suppressed by .depxignore (${suppressed})`
+        : 'every import resolves, and nothing is unused';
+
+    const langs = state.result.languages.length;
+    const stats = `${state.result.filesScanned} file${state.result.filesScanned === 1 ? '' : 's'} scanned` +
+      (langs ? ` across ${langs} language${langs === 1 ? '' : 's'}` : '');
+    const nested = state.result.skippedProjects ?? [];
+
+    const gap = ' '.repeat(inner); // every row in a frame is full width
+    const panel = [
+      gap,
+      centre(`${mark}  ${blank || suppressed ? c.yellow(headline) : c.green(headline)}`, inner),
+      gap,
+      centre(c.dim(detail), inner),
+      gap,
+      centre(c.dim(stats), inner),
+    ];
+    if (nested.length) {
+      panel.push(
+        centre(
+          c.dim(`${nested.length} nested project${nested.length === 1 ? '' : 's'} not descended into`),
+          inner,
+        ),
+        centre(c.dim('each has its own manifest - open depx inside it'), inner),
+      );
+    }
+
+    // Sit the panel a third of the way down rather than pinned to the top.
+    const lead = Math.max(0, Math.floor((bodyHeight - panel.length) / 3));
     for (let i = 0; i < bodyHeight; i++) {
-      out.push('  ' + (i === 1 ? (blank ? c.yellow(fit(msg, inner)) : c.green(fit(msg, inner))) : ' '.repeat(inner)));
+      out.push('  ' + (panel[i - lead] ?? ' '.repeat(inner)));
     }
   } else {
     const searching = Boolean(state.filter.trim());
@@ -370,8 +412,10 @@ export function renderFrame(state, { cols, rows }) {
       ? c.cyan('/' + state.filter) + c.dim('▏  ⏎ keep   esc clear   (searches every category)')
       : state.message
         ? c.yellow(state.message)
-        : c.dim('↑↓ move   ←→ category   / search   ⏎ open   q quit') +
-          (state.filter ? c.cyan(`   /${state.filter}`) : '');
+        : state.groups.length === 0
+          ? c.dim('q quit')
+          : c.dim('↑↓ move   ←→ category   / search   ⏎ open   q quit') +
+            (state.filter ? c.cyan(`   /${state.filter}`) : '');
 
   // Every line in a frame is exactly `cols` wide, the footer included - and
   // an over-long one falls back to a shorter hint rather than being sliced,

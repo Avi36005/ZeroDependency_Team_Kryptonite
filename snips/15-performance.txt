@@ -13,4 +13,4 @@ $ time depx check .
 
   nothing to report
 
-real	0m0.72s
+real	0m0.69s
