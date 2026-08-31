@@ -15,7 +15,7 @@ const VERSION = '0.1.0';
 
 const COMMANDS = {
   check: 'every finding: ghosts, broken, phantom, replaceable, dead (default)',
-  tui: 'browse the findings interactively - arrow keys, filter, open in $EDITOR',
+  tui: 'browse the findings interactively - arrows, search, open in $EDITOR',
   ghosts: 'only imports nothing here resolves - the slopsquat candidates',
   phantom: 'only imports that are installed but never declared',
   dead: 'only declared packages that are never imported',
@@ -53,7 +53,7 @@ ${rows}
     2  usage error
 
   ${c.bold('EXAMPLES')}
-    depx                          ${c.dim('# check the current directory')}
+    depx                          ${c.dim('# open the interface here (a pipe gets the report)')}
     depx ghosts ./src             ${c.dim('# only hallucinated imports')}
     depx check . --lang go,rust   ${c.dim('# restrict languages')}
     depx zero-dep . --json        ${c.dim('# CI gate for the hackathon rule')}
@@ -108,8 +108,18 @@ async function main(argv) {
     path = command;
     command = 'check';
   }
+  const bare = positionals.length === 0;
   command ??= 'check';
   path ??= '.';
+
+  // `depx` on its own, in a terminal, opens the interface - the same reflex as
+  // running any interactive tool by name. Everywhere else it stays the batch
+  // report: a pipe, a redirect, a CI job, --json, --quiet, or any explicit
+  // subcommand. A script's behaviour must not depend on where its output goes,
+  // so only the no-argument interactive case changes.
+  if (bare && !values.json && !values.quiet && process.stdout.isTTY && process.stdin.isTTY) {
+    command = 'tui';
+  }
 
   if (command === 'langs') {
     // columns() measures display width, so a name longer than the assumed
