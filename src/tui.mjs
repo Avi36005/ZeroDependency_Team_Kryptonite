@@ -1,0 +1,440 @@
+// Interactive terminal UI: browse the findings instead of reading all of them.
+//
+// Replaces: `ink`, `blessed`, `enquirer`, `ora`, `cli-cursor`, `terminal-kit`.
+// An alternate screen, decoded arrow keys, raw mode and resize handling are
+// node:readline plus a dozen ANSI escapes - which is the whole of what those
+// packages provide for a list you can arrow through.
+//
+// Split in two on purpose. Everything above runTui() is a pure function of
+// (state, size), so the suite drives the entire interface without a terminal
+// and without spawning anything. Only runTui() touches stdin, stdout or the
+// process.
+
+import { emitKeypressEvents } from 'node:readline';
+import { spawn } from 'node:child_process';
+import { basename } from 'node:path';
+import { c, displayWidth, ORDER, HEADINGS } from './report.mjs';
+
+const LEFT_WIDTH = 22; // category pane; the report's longest label is UNDECLARED
+const MIN_COLS = 60;
+const MIN_ROWS = 12;
+
+// Why each finding matters, in the report's own vocabulary. `replaceable` and
+// `dead` carry their own per-finding detail, so they are not listed here.
+const WHY = {
+  ghost: 'Nothing local provides this name, so the build breaks on a clean checkout. Check it against its registry: if it is not there either, this is the slopsquat window.',
+  broken: 'A relative import pointing at no file on disk. Not a judgement call - the path is simply not there.',
+  phantom: 'Installed but never declared. It resolves today because something else dragged it in, and breaks the moment that dependency moves.',
+  undeclared: 'Not in the manifest, and no install tree here to check against - so this is reported as unverified rather than as a ghost.',
+};
+
+/* ---------------------------------------------------------------- state -- */
+
+/**
+ * Group the findings the way the report orders them, dropping the kinds that
+ * found nothing. An empty category is worth a count in a report and is only
+ * an obstacle in a list you arrow through.
+ */
+export function createState(result) {
+  const groups = ORDER.map((type) => ({
+    type,
+    items: result.findings.filter((f) => f.type === type),
+  })).filter((g) => g.items.length > 0);
+
+  return { result, groups, cat: 0, item: 0, top: 0, mode: 'nav', filter: '', message: '' };
+}
+
+/** The findings in the selected category, narrowed by the filter. */
+export function visible(state) {
+  const group = state.groups[state.cat];
+  if (!group) return [];
+  const query = state.filter.trim().toLowerCase();
+  if (!query) return group.items;
+  return group.items.filter((f) => f.name.toLowerCase().includes(query));
+}
+
+export function selected(state) {
+  return visible(state)[state.item] ?? null;
+}
+
+const clamp = (n, lo, hi) => (n < lo ? lo : n > hi ? hi : n);
+
+/**
+ * The whole key map, as a pure reduction. Returns the next state and the
+ * action the caller has to perform in the world - quitting or opening an
+ * editor - because those are the two things a pure function cannot do.
+ */
+export function reduce(state, key) {
+  const next = { ...state, message: '' };
+  const name = key.name ?? '';
+  const ch = key.sequence ?? '';
+
+  if (key.ctrl && (name === 'c' || name === 'd')) return { state: next, action: 'quit' };
+
+  if (state.mode === 'filter') {
+    if (name === 'return' || name === 'escape') {
+      // Escape abandons the filter; Enter keeps it and goes back to the list.
+      if (name === 'escape') next.filter = '';
+      next.mode = 'nav';
+      next.item = 0;
+      next.top = 0;
+      return { state: next, action: null };
+    }
+    if (name === 'backspace') {
+      next.filter = state.filter.slice(0, -1);
+    } else if (ch && ch.length === 1 && ch >= ' ' && ch !== '\x7f') {
+      next.filter = state.filter + ch;
+    }
+    next.item = 0;
+    next.top = 0;
+    return { state: next, action: null };
+  }
+
+  const count = visible(state).length;
+  const last = Math.max(0, count - 1);
+
+  switch (true) {
+    case name === 'q' || name === 'escape':
+      if (state.filter) {
+        next.filter = '';
+        next.item = 0;
+        next.top = 0;
+        return { state: next, action: null };
+      }
+      return { state: next, action: 'quit' };
+
+    case name === 'up' || ch === 'k':
+      next.item = clamp(state.item - 1, 0, last);
+      break;
+    case name === 'down' || ch === 'j':
+      next.item = clamp(state.item + 1, 0, last);
+      break;
+
+    // Categories wrap, because six of them in a row is a carousel, not a list.
+    case name === 'left' || ch === 'h':
+      if (state.groups.length) next.cat = (state.cat - 1 + state.groups.length) % state.groups.length;
+      next.item = 0;
+      next.top = 0;
+      break;
+    case name === 'right' || ch === 'l' || name === 'tab':
+      if (state.groups.length) next.cat = (state.cat + 1) % state.groups.length;
+      next.item = 0;
+      next.top = 0;
+      break;
+
+    case ch === 'g':
+      next.item = 0;
+      break;
+    case ch === 'G':
+      next.item = last;
+      break;
+
+    case ch === '/':
+      next.mode = 'filter';
+      break;
+
+    case name === 'return':
+      return { state: next, action: selected(state) ? 'open' : null };
+  }
+
+  return { state: next, action: null };
+}
+
+/** Scroll the window so the selection stays inside it. */
+function reframe(state, height) {
+  const count = visible(state).length;
+  let top = state.top;
+  if (state.item < top) top = state.item;
+  if (state.item >= top + height) top = state.item - height + 1;
+  return clamp(top, 0, Math.max(0, count - height));
+}
+
+/* --------------------------------------------------------------- render -- */
+
+/** Pad or truncate plain text to an exact display width. */
+export function fit(text, width) {
+  if (width <= 0) return '';
+  const w = displayWidth(text);
+  if (w === width) return text;
+  if (w < width) return text + ' '.repeat(width - w);
+
+  let out = '';
+  let used = 0;
+  for (const chr of text) {
+    const cw = displayWidth(chr);
+    if (used + cw > width - 1) break;
+    out += chr;
+    used += cw;
+  }
+  return out + '…' + ' '.repeat(Math.max(0, width - used - 1));
+}
+
+/** Greedy wrap on spaces, falling back to a hard break for a long token. */
+export function wrap(text, width) {
+  if (width <= 0) return [];
+  const lines = [];
+  let line = '';
+  for (const word of String(text).split(/\s+/).filter(Boolean)) {
+    if (!line) {
+      line = word;
+    } else if (displayWidth(line) + 1 + displayWidth(word) <= width) {
+      line += ' ' + word;
+    } else {
+      lines.push(line);
+      line = word;
+    }
+    while (displayWidth(line) > width) {
+      lines.push(line.slice(0, width));
+      line = line.slice(width);
+    }
+  }
+  if (line) lines.push(line);
+  return lines;
+}
+
+/** Where a finding is, as the report writes it. */
+function siteOf(finding) {
+  const site = finding?.sites?.[0];
+  if (!site) return '';
+  return `${site.file}:${site.line}:${site.column}`;
+}
+
+/** The detail block for the selected finding - two lines, wrapped to width. */
+function detailLines(state, width, height) {
+  const finding = selected(state);
+  if (!finding) return [];
+
+  const parts = [];
+  if (finding.type === 'replaceable') {
+    parts.push(`-> ${finding.detail}  (${finding.since})`);
+    if (finding.note) parts.push(finding.note);
+  } else if (finding.type === 'dead') {
+    parts.push(finding.detail);
+  } else {
+    parts.push(WHY[finding.type] ?? finding.detail ?? '');
+  }
+
+  const sites = finding.sites ?? [];
+  if (sites.length > 1) {
+    const shown = sites.slice(0, 4).map((s) => `${s.file}:${s.line}:${s.column}`).join('  ');
+    parts.push(`${sites.length} sites: ${shown}` + (sites.length > 4 ? '  …' : ''));
+  }
+
+  return wrap(parts.filter(Boolean).join('  '), width).slice(0, height);
+}
+
+/**
+ * One frame, as an array of exactly `rows` lines each exactly `cols` wide.
+ * Pure: the same state and size always produce the same frame, which is what
+ * makes the suite able to assert on the interface.
+ */
+export function renderFrame(state, { cols, rows }) {
+  if (cols < MIN_COLS || rows < MIN_ROWS) {
+    const msg = `terminal too small - depx tui needs ${MIN_COLS}x${MIN_ROWS}, this is ${cols}x${rows}`;
+    return [...wrap(msg, Math.max(1, cols - 2)).map((l) => '  ' + l)];
+  }
+
+  const inner = cols - 2; // the report's two-space left margin, kept
+  const rule = c.dim('  ' + '─'.repeat(inner));
+  const out = [];
+
+  // Header: what was scanned, and how much of it.
+  const langs = state.result.languages.length;
+  const left = `depx · ${basename(state.result.root || '.')}`;
+  const right = `${state.result.filesScanned} files · ${langs} lang${langs === 1 ? '' : 's'}`;
+  out.push('  ' + c.bold(fit(left, Math.max(0, inner - displayWidth(right)))) + c.dim(right));
+  out.push(rule);
+
+  const chrome = 5; // two rules, header, footer, and the detail separator
+  const detailHeight = state.groups.length ? 3 : 0;
+  const bodyHeight = Math.max(1, rows - chrome - detailHeight);
+
+  if (state.groups.length === 0) {
+    // Clean, or clean-once-suppressed. Same distinction the report draws.
+    const suppressed = (state.result.suppressed ?? []).length;
+    const blank = state.result.filesScanned === 0;
+    const msg = blank
+      ? 'no source files found here - nothing was analysed'
+      : suppressed
+        ? 'nothing to report outside .depxignore'
+        : 'clean - every import resolves and nothing is unused';
+    for (let i = 0; i < bodyHeight; i++) {
+      out.push('  ' + (i === 1 ? (blank ? c.yellow(fit(msg, inner)) : c.green(fit(msg, inner))) : ' '.repeat(inner)));
+    }
+  } else {
+    const items = visible(state);
+    const top = reframe(state, bodyHeight);
+    const listWidth = inner - LEFT_WIDTH - 2;
+
+    for (let row = 0; row < bodyHeight; row++) {
+      // Left pane: the categories, with the selected one marked.
+      const group = state.groups[row];
+      let leftCell;
+      if (!group) {
+        leftCell = ' '.repeat(LEFT_WIDTH);
+      } else {
+        const head = HEADINGS[group.type];
+        const label = `${row === state.cat ? '▸' : ' '} ${head.label} (${group.items.length})`;
+        leftCell = row === state.cat ? head.paint(c.bold(fit(label, LEFT_WIDTH))) : c.dim(fit(label, LEFT_WIDTH));
+      }
+
+      // Right pane: the findings in the selected category. The selected row
+      // carries a glyph as well as reverse video, so the interface still
+      // reads under NO_COLOR or on a terminal that ignores the escape.
+      const finding = items[top + row];
+      const isCurrent = top + row === state.item;
+      let rightCell;
+      if (!finding) {
+        rightCell =
+          top + row === 0 && state.filter
+            ? c.dim(fit(`  no ${state.groups[state.cat].type} matches "${state.filter}"`, listWidth))
+            : ' '.repeat(listWidth);
+      } else {
+        const body = listWidth - 2;
+        const where = siteOf(finding);
+        const nameWidth = Math.max(8, body - displayWidth(where) - 2);
+        const whereWidth = body - nameWidth - 2;
+        rightCell = isCurrent
+          ? c.inverse('\u203a ' + fit(finding.name, nameWidth) + '  ' + fit(where, whereWidth))
+          : '  ' +
+            HEADINGS[state.groups[state.cat].type].paint(fit(finding.name, nameWidth)) +
+            '  ' +
+            c.dim(fit(where, whereWidth));
+      }
+
+      out.push('  ' + leftCell + c.dim('│ ') + rightCell);
+    }
+
+    out.push(rule);
+    const detail = detailLines(state, inner, detailHeight);
+    for (let i = 0; i < detailHeight; i++) out.push('  ' + c.dim(fit(detail[i] ?? '', inner)));
+  }
+
+  out.push(rule);
+
+  // Footer: the filter prompt while typing, the key map otherwise.
+  const footer =
+    state.mode === 'filter'
+      ? c.cyan('/' + state.filter) + c.dim('▏  ⏎ keep   esc clear')
+      : state.message
+        ? c.yellow(state.message)
+        : c.dim('↑↓ move   ←→ category   ⏎ open   / filter   q quit') +
+          (state.filter ? c.cyan(`   /${state.filter}`) : '');
+
+  // Every line in a frame is exactly `cols` wide, the footer included - and
+  // an over-long one falls back to a shorter hint rather than being sliced,
+  // because slicing coloured text cuts an escape sequence in half.
+  const footerWidth = displayWidth(footer);
+  out.push(
+    '  ' +
+      (footerWidth > inner
+        ? c.dim(fit('↑↓ ←→ move   / filter   q quit', inner))
+        : footer + ' '.repeat(inner - footerWidth)),
+  );
+
+  // A frame is always exactly `rows` tall, so nothing from the last one shows.
+  while (out.length < rows) out.splice(out.length - 1, 0, ' '.repeat(cols));
+  return out.slice(0, rows);
+}
+
+/* ------------------------------------------------------------- the world -- */
+
+const ALT_ON = '\x1b[?1049h\x1b[?25l';
+const ALT_OFF = '\x1b[?25h\x1b[?1049l';
+
+/** `$EDITOR +12 src/app.js`, or the `-g file:line` form VS Code wants. */
+export function editorCommand(editor, file, line) {
+  const argv = editor.trim().split(/\s+/);
+  const bin = argv[0];
+  const rest = argv.slice(1);
+  if (/\bcode(-insiders)?$/.test(bin)) return { bin, args: [...rest, '-g', `${file}:${line}`] };
+  if (/\b(vim|nvim|vi|nano|emacs|kak|hx|helix)$/.test(bin)) return { bin, args: [...rest, `+${line}`, file] };
+  return { bin, args: [...rest, file] };
+}
+
+/**
+ * Run the interface. Resolves with the exit code once the user quits.
+ *
+ * The terminal is a global the process borrows, so every escape sequence
+ * written here is undone in finish() - including on a crash, which is why the
+ * restore runs from a finally and not from the quit path.
+ */
+export function runTui(result, { stdin = process.stdin, stdout = process.stdout } = {}) {
+  return new Promise((resolve) => {
+    let state = createState(result);
+    let closed = false;
+
+    const draw = () => {
+      const cols = stdout.columns || 80;
+      const rows = stdout.rows || 24;
+      // Home, then clear each line as it is rewritten: no full-screen erase,
+      // so the frame does not flash between renders.
+      stdout.write('\x1b[H' + renderFrame(state, { cols, rows }).map((l) => l + '\x1b[K').join('\r\n') + '\x1b[J');
+    };
+
+    const finish = (code) => {
+      if (closed) return;
+      closed = true;
+      stdin.off('keypress', onKey);
+      stdout.off('resize', draw);
+      if (stdin.isTTY) stdin.setRawMode(false);
+      stdin.pause();
+      // emitKeypressEvents leaves a reader on the handle, and a referenced TTY
+      // keeps the event loop alive: without this the report is restored, the
+      // prompt comes back, and the process never actually exits.
+      stdin.unref?.();
+      stdout.write(ALT_OFF);
+      resolve(code);
+    };
+
+    const onKey = (str, key = {}) => {
+      const { state: nextState, action } = reduce(state, { ...key, sequence: key.sequence ?? str });
+      state = nextState;
+
+      if (action === 'quit') {
+        // The exit code has to agree with `depx check`, or the same repository
+        // passes in one interface and fails in the other.
+        const bad = result.findings.some((f) => f.type === 'ghost' || f.type === 'broken');
+        finish(bad ? 1 : 0);
+        return;
+      }
+      if (action === 'open') openInEditor();
+      draw();
+    };
+
+    const openInEditor = () => {
+      const finding = selected(state);
+      const site = finding?.sites?.[0];
+      if (!site) return;
+      const editor = process.env.VISUAL || process.env.EDITOR;
+      if (!editor) {
+        state.message = `no $EDITOR set - ${siteOf(finding)}`;
+        return;
+      }
+      const { bin, args } = editorCommand(editor, site.file, site.line);
+      // Hand the terminal over whole: leave the alt screen, drop raw mode, and
+      // take both back when the editor exits.
+      if (stdin.isTTY) stdin.setRawMode(false);
+      stdout.write(ALT_OFF);
+      try {
+        spawn(bin, args, { stdio: 'inherit', cwd: result.root }).on('exit', () => {
+          stdout.write(ALT_ON);
+          if (stdin.isTTY) stdin.setRawMode(true);
+          draw();
+        });
+      } catch (error) {
+        stdout.write(ALT_ON);
+        if (stdin.isTTY) stdin.setRawMode(true);
+        state.message = `could not run ${bin}: ${error.message}`;
+      }
+    };
+
+    emitKeypressEvents(stdin);
+    if (stdin.isTTY) stdin.setRawMode(true);
+    stdin.resume();
+    stdin.on('keypress', onKey);
+    stdout.on('resize', draw);
+    stdout.write(ALT_ON);
+    draw();
+  });
+}

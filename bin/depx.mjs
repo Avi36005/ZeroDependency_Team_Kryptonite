@@ -8,12 +8,14 @@
 import { parseArgs } from 'node:util';
 import { analyze, verifyZeroDep, findVendored } from '../src/core.mjs';
 import { renderReport, renderZeroDep, renderVendored, setColor, columns, c } from '../src/report.mjs';
+import { runTui } from '../src/tui.mjs';
 import { LANGUAGES } from '../src/lang/index.mjs';
 
 const VERSION = '0.1.0';
 
 const COMMANDS = {
   check: 'every finding: ghosts, broken, phantom, replaceable, dead (default)',
+  tui: 'browse the findings interactively - arrow keys, filter, open in $EDITOR',
   ghosts: 'only imports nothing here resolves - the slopsquat candidates',
   phantom: 'only imports that are installed but never declared',
   dead: 'only declared packages that are never imported',
@@ -55,6 +57,7 @@ ${rows}
     depx ghosts ./src             ${c.dim('# only hallucinated imports')}
     depx check . --lang go,rust   ${c.dim('# restrict languages')}
     depx zero-dep . --json        ${c.dim('# CI gate for the hackathon rule')}
+    depx tui ./src                ${c.dim('# browse the findings instead of scrolling')}
 `;
 }
 
@@ -156,6 +159,16 @@ async function main(argv) {
 
   const result = await analyze(path, { include });
   const only = { ghosts: 'ghost', phantom: 'phantom', dead: 'dead', replace: 'replaceable' }[command] ?? null;
+
+  if (command === 'tui') {
+    // An interactive screen needs a terminal on both ends. Rather than
+    // silently rendering something else, say so and name the command that
+    // does work in a pipe - the batch report is what CI wants anyway.
+    if (!process.stdout.isTTY || !process.stdin.isTTY) {
+      fail('tui needs an interactive terminal; use \'depx check\' for piped or CI output');
+    }
+    return runTui(result);
+  }
 
   if (values.json) {
     process.stdout.write(JSON.stringify(toJson(result, only), null, 2) + '\n');
