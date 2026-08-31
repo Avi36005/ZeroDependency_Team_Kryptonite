@@ -1,0 +1,62 @@
+$ depx tui fixtures/messy
+
+  depx · messy                                             4 files · 3 langs
+  ──────────────────────────────────────────────────────────────────────────
+  ▸ GHOSTS (3)          │ › async-retry-utils                src/app.js:5:34
+    BROKEN (1)          │   json-schema-validator-pro        src/app.js:6:26
+    PHANTOM (1)         │   github.com/acme/nonexistent-…  gosrc/main.go:9:2
+    UNDECLARED (2)      │
+    REPLACEABLE (6)     │
+    DEAD (4)            │
+                        │
+                        │
+                        │
+                        │
+  ──────────────────────────────────────────────────────────────────────────
+  Nothing local provides this name, so the build breaks on a clean checkout.
+  Check it against its registry: if it is not there either, this is the
+  slopsquat window.
+  ──────────────────────────────────────────────────────────────────────────
+  ↑↓ move   ←→ category   ⏎ open   / filter   q quit
+
+# -> -> -> ->  to REPLACEABLE, then down one
+
+  depx · messy                                             4 files · 3 langs
+  ──────────────────────────────────────────────────────────────────────────
+    GHOSTS (3)          │   chalk                            src/app.js:1:19
+    BROKEN (1)          │ › minimist                         src/app.js:2:22
+    PHANTOM (1)         │   uuid                             src/app.js:3:20
+    UNDECLARED (2)      │   github.com/google/uuid         gosrc/main.go:7:2
+  ▸ REPLACEABLE (6)     │   github.com/sirupsen/logrus     gosrc/main.go:8:2
+    DEAD (4)            │   requests                       pysrc/main.py:2:8
+                        │
+                        │
+                        │
+                        │
+  ──────────────────────────────────────────────────────────────────────────
+  -> util.parseArgs() (node 18.3) strings and booleans only; subcommands are
+  yours
+
+  ──────────────────────────────────────────────────────────────────────────
+  ↑↓ move   ←→ category   ⏎ open   / filter   q quit
+
+# /go  to filter the list
+
+  depx · messy                                             4 files · 3 langs
+  ──────────────────────────────────────────────────────────────────────────
+    GHOSTS (3)          │ › github.com/google/uuid         gosrc/main.go:7:2
+    BROKEN (1)          │
+    PHANTOM (1)         │
+    UNDECLARED (2)      │
+  ▸ REPLACEABLE (6)     │
+    DEAD (4)            │
+                        │
+                        │
+                        │
+                        │
+  ──────────────────────────────────────────────────────────────────────────
+  -> uuid (go 1.27) moved into the standard library
+
+
+  ──────────────────────────────────────────────────────────────────────────
+  /go▏  ⏎ keep   esc clear

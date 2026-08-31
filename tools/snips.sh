@@ -120,3 +120,44 @@ printf '  snips/17-test-suite.txt\n'
   cat deps-proof.txt
 } >snips/18-deps-proof.txt
 printf '  snips/18-deps-proof.txt\n'
+
+# The interactive interface, captured without a terminal.
+#
+# `depx tui` refuses to run in a pipe, so these frames come from renderFrame()
+# directly - the same pure function the live interface draws with, at a fixed
+# 76x18 so the file is stable. What you see here is what the screen shows.
+node --input-type=module - <<'JS' >snips/21-tui.txt
+import { analyze } from './src/core.mjs';
+import { setColor } from './src/report.mjs';
+import { createState, renderFrame, reduce } from './src/tui.mjs';
+
+setColor(false);
+const size = { cols: 76, rows: 18 };
+const result = await analyze('fixtures/messy');
+const trim = (s) => renderFrame(s, size).map((l) => l.replace(/\s+$/, '')).join('\n');
+const press = (s, keys) => keys.reduce((acc, k) => reduce(acc, k).state, s);
+
+const out = [];
+out.push('$ depx tui fixtures/messy');
+out.push('');
+const start = createState(result);
+out.push(trim(start));
+
+out.push('');
+out.push('# -> -> -> ->  to REPLACEABLE, then down one');
+out.push('');
+out.push(trim(press(start, [...Array(4).fill({ name: 'right' }), { name: 'down' }])));
+
+out.push('');
+out.push('# /go  to filter the list');
+out.push('');
+const filtered = press(start, [
+  ...Array(4).fill({ name: 'right' }),
+  { sequence: '/' },
+  { sequence: 'g' },
+  { sequence: 'o' },
+]);
+out.push(trim(filtered));
+console.log(out.join('\n'));
+JS
+printf '  snips/21-tui.txt\n'

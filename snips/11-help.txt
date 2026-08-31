@@ -7,6 +7,7 @@ $ depx --help
 
   COMMANDS
     check      every finding: ghosts, broken, phantom, replaceable, dead (default)
+    tui        browse the findings interactively - arrow keys, filter, open in $EDITOR
     ghosts     only imports nothing here resolves - the slopsquat candidates
     phantom    only imports that are installed but never declared
     dead       only declared packages that are never imported
@@ -33,5 +34,6 @@ $ depx --help
     depx ghosts ./src             # only hallucinated imports
     depx check . --lang go,rust   # restrict languages
     depx zero-dep . --json        # CI gate for the hackathon rule
+    depx tui ./src                # browse the findings instead of scrolling
 $ echo $?
 0
