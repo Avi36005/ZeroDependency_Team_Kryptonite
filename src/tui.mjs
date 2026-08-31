@@ -35,13 +35,36 @@ const WHY = {
  * found nothing. An empty category is worth a count in a report and is only
  * an obstacle in a list you arrow through.
  */
-export function createState(result) {
+export const VIEWS = [
+  { key: 'f', id: 'findings', label: 'findings', title: 'findings' },
+  { key: 'z', id: 'rule', label: 'rule', title: 'zero-dep rule' },
+  { key: 'v', id: 'copied', label: 'copied', title: 'copied source' },
+];
+
+/**
+ * `rule` is the verifyZeroDep() result, which also carries the vendored scan.
+ * Both analyses run behind the one scan screen, so switching view is instant
+ * and the interface never has to send you back to a shell to ask a different
+ * question about the same repository.
+ */
+export function createState(result, rule = null) {
   const groups = ORDER.map((type) => ({
     type,
     items: result.findings.filter((f) => f.type === type),
   })).filter((g) => g.items.length > 0);
 
-  return { result, groups, cat: 0, item: 0, top: 0, mode: 'nav', filter: '', message: '' };
+  return {
+    result,
+    rule,
+    view: 'findings',
+    groups,
+    cat: 0,
+    item: 0,
+    top: 0,
+    mode: 'nav',
+    filter: '',
+    message: '',
+  };
 }
 
 /** The findings in the selected category, narrowed by the filter. */
@@ -128,6 +151,14 @@ export function reduce(state, key) {
     return { state: settle(next), action: null };
   }
 
+  // View keys work from anywhere in the interface, because "show me the other
+  // question about this repository" is not a navigation action.
+  const view = VIEWS.find((v) => v.key === ch);
+  if (view && (view.id === 'findings' || state.rule)) {
+    next.view = view.id;
+    return { state: next, action: null };
+  }
+
   const count = visible(state).length;
   const last = Math.max(0, count - 1);
 
@@ -205,6 +236,12 @@ export function fit(text, width) {
     used += cw;
   }
   return out + '…' + ' '.repeat(Math.max(0, width - used - 1));
+}
+
+/** Pad a composed (possibly coloured) line out to an exact frame width. */
+function fitLine(line, width) {
+  const w = displayWidth(line);
+  return w >= width ? line : line + ' '.repeat(width - w);
 }
 
 /** Centre plain text in an exact width. */
@@ -300,6 +337,68 @@ export function renderScanning({ path, files = 0, done = false }, { cols, rows }
   return out.slice(0, rows);
 }
 
+/** The Zero Dependency rule check, as the `zero-dep` command reports it. */
+function ruleLines(rule, inner) {
+  if (!rule) return [c.dim('  the rule check did not run')];
+  const out = [];
+
+  for (const row of rule.rows) {
+    const verdict = row.pass ? c.green('PASS') : c.red('FAIL');
+    const detail = row.pass
+      ? 'no runtime dependencies'
+      : `${row.runtimeDeps} runtime ${row.runtimeDeps === 1 ? 'dependency' : 'dependencies'}: ` +
+        row.names.slice(0, 4).join(', ') +
+        (row.names.length > 4 ? ` +${row.names.length - 4}` : '');
+    out.push('  ' + verdict + '  ' + fit(row.manifest, 18) + c.dim(fit(detail, Math.max(0, inner - 26))));
+  }
+
+  for (const gap of rule.missing) {
+    out.push(
+      '  ' +
+        c.red('FAIL') +
+        '  ' +
+        fit(gap.expected, 18) +
+        c.dim(fit(`missing - ${gap.files} ${gap.language} files present`, Math.max(0, inner - 26))),
+    );
+  }
+
+  out.push(' '.repeat(inner));
+  const copied = rule.vendored ?? [];
+  out.push(
+    '  ' +
+      (rule.pass && copied.length === 0
+        ? c.green(fit('empty manifest verified, no vendored source detected', inner - 2))
+        : copied.length
+          ? c.yellow(fit(`${copied.length} file${copied.length === 1 ? '' : 's'} do not read as hand-written - press v`, inner - 2))
+          : c.red(fit('the manifest is not empty', inner - 2))),
+  );
+  return out;
+}
+
+/** The vendoring signals, which are the other half of the rule. */
+function copiedLines(rule, inner) {
+  const copied = rule?.vendored ?? [];
+  if (copied.length === 0) {
+    return [
+      ' '.repeat(inner),
+      centre(c.green('✓  no copied or generated source detected'), inner),
+      ' '.repeat(inner),
+      centre(c.dim('every file here reads as hand-written'), inner),
+    ];
+  }
+
+  const out = [];
+  for (const file of copied.slice(0, 6)) {
+    out.push('  ' + c.yellow(fit(file.file, 28)) + c.dim(fit(`${file.signals.length} signals`, inner - 30)));
+    for (const signal of file.signals.slice(0, 2)) {
+      for (const line of wrap(signal.why ?? signal.id, inner - 8)) out.push('      ' + c.dim(fit(line, inner - 6)));
+    }
+  }
+  out.push(' '.repeat(inner));
+  out.push('  ' + c.dim(fit('signals, not proof - open them and decide', inner - 2)));
+  return out;
+}
+
 /**
  * One frame, as an array of exactly `rows` lines each exactly `cols` wide.
  * Pure: the same state and size always produce the same frame, which is what
@@ -317,7 +416,8 @@ export function renderFrame(state, { cols, rows }) {
 
   // Header: what was scanned, and how much of it.
   const langs = state.result.languages.length;
-  const left = `depx · ${basename(state.result.root || '.')}`;
+  const viewName = VIEWS.find((v) => v.id === state.view)?.title ?? '';
+  const left = `depx · ${basename(state.result.root || '.')}` + (state.view === 'findings' ? '' : `  ${viewName}`);
   const hits = state.filter.trim() ? totalMatches(state) : null;
   const files = state.result.filesScanned;
   const right =
@@ -330,10 +430,16 @@ export function renderFrame(state, { cols, rows }) {
   // header, rule, body, rule, footer - plus the detail strip and its own rule
   // when there are findings to explain.
   const detailHeight = state.groups.length ? 3 : 0;
-  const chrome = state.groups.length ? 5 : 4;
-  const bodyHeight = Math.max(1, rows - chrome - detailHeight);
+  const chrome = state.view === 'findings' && state.groups.length ? 5 : 4;
+  const bodyHeight = Math.max(1, rows - chrome - (state.view === 'findings' ? detailHeight : 0));
 
-  if (state.groups.length === 0) {
+  if (state.view !== 'findings') {
+    const lines = state.view === 'rule' ? ruleLines(state.rule, inner) : copiedLines(state.rule, inner);
+    for (let i = 0; i < bodyHeight; i++) {
+      const line = lines[i];
+      out.push(line === undefined ? ' '.repeat(cols) : (line.startsWith(' ') ? '' : '  ') + fitLine(line, cols));
+    }
+  } else if (state.groups.length === 0) {
     // Nothing to browse. A screen of empty rows reads as a broken program, so
     // the three no-findings outcomes each get a composed panel instead - and
     // they stay distinct, because a repository whose findings were all
@@ -445,21 +551,31 @@ export function renderFrame(state, { cols, rows }) {
       ? c.cyan('/' + state.filter) + c.dim('▏  ⏎ keep   esc clear   (searches every category)')
       : state.message
         ? c.yellow(state.message)
-        : state.groups.length === 0
-          ? c.dim('q quit')
-          : c.dim('↑↓ move   ←→ category   / search   ⏎ open   q quit') +
-            (state.filter ? c.cyan(`   /${state.filter}`) : '');
+        : (() => {
+            // Every view the interface can show is named here, so nothing
+            // requires going back to a shell to ask a different question.
+            const tabs = VIEWS.map((v) =>
+              v.id === state.view ? c.bold(`[${v.key}]${v.label}`) : c.dim(`${v.key} ${v.label}`),
+            ).join(c.dim('  '));
+            const browsing = state.view === 'findings' && state.groups.length;
+            const tail = c.dim('  q quit') + (state.filter ? c.cyan(`  /${state.filter}`) : '');
+
+            // Tiered rather than all-or-nothing: a narrow terminal drops the
+            // navigation hints before it drops the list of views, because a
+            // key you cannot discover is a feature that does not exist.
+            const tiers = [
+              browsing ? c.dim('↑↓←→ move  / search  ⏎ open  ') + tabs + tail : tabs + tail,
+              tabs + tail,
+              tabs,
+            ];
+            return tiers.find((t) => displayWidth(t) <= inner) ?? tabs;
+          })();
 
   // Every line in a frame is exactly `cols` wide, the footer included - and
   // an over-long one falls back to a shorter hint rather than being sliced,
   // because slicing coloured text cuts an escape sequence in half.
   const footerWidth = displayWidth(footer);
-  out.push(
-    '  ' +
-      (footerWidth > inner
-        ? c.dim(fit('↑↓ ←→ move   / search   q quit', inner))
-        : footer + ' '.repeat(inner - footerWidth)),
-  );
+  out.push('  ' + (footerWidth > inner ? c.dim(fit('f z v   q quit', inner)) : footer + ' '.repeat(inner - footerWidth)));
 
   // A frame is always exactly `rows` tall, so nothing from the last one shows.
   while (out.length < rows) out.splice(out.length - 1, 0, ' '.repeat(cols));
@@ -488,13 +604,15 @@ export function editorCommand(editor, file, line) {
  * written here is undone in finish() - including on a crash, which is why the
  * restore runs from a finally and not from the quit path.
  */
-export function runTui(source, { stdin = process.stdin, stdout = process.stdout, progress = null } = {}) {
+export function runTui(source, { stdin = process.stdin, stdout = process.stdout, progress = null, rule = null } = {}) {
   // `source` is either a result or a promise of one. Given a promise, the scan
   // screen is drawn first and the interface takes over when it settles - which
   // on a small project is a flicker, and on a large one is the only feedback
   // there is.
+  // A promise here resolves to [analysis, ruleCheck] - both run behind the one
+  // scan screen so that switching view later is instant.
   const pending = typeof source?.then === 'function' ? source : null;
-  if (!pending) return drive(source, { stdin, stdout });
+  if (!pending) return drive(source, { stdin, stdout, rule });
 
   return new Promise((resolve, reject) => {
     const size = () => ({ cols: stdout.columns || 80, rows: stdout.rows || 24 });
@@ -515,9 +633,9 @@ export function runTui(source, { stdin = process.stdin, stdout = process.stdout,
     if (typeof tick.unref === 'function') tick.unref();
 
     pending.then(
-      (result) => {
+      ([result, rule]) => {
         clearInterval(tick);
-        resolve(drive(result, { stdin, stdout, alreadyOnAltScreen: true }));
+        resolve(drive(result, { stdin, stdout, rule, alreadyOnAltScreen: true }));
       },
       (error) => {
         clearInterval(tick);
@@ -528,9 +646,9 @@ export function runTui(source, { stdin = process.stdin, stdout = process.stdout,
   });
 }
 
-function drive(result, { stdin, stdout, alreadyOnAltScreen = false }) {
+function drive(result, { stdin, stdout, rule = null, alreadyOnAltScreen = false }) {
   return new Promise((resolve) => {
-    let state = createState(result);
+    let state = createState(result, rule);
     let closed = false;
 
     const draw = () => {

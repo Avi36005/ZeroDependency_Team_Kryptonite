@@ -17,7 +17,7 @@ $ node bin/depx.mjs zero-dep .
   empty manifest verified, no vendored source detected
 
 $ make verify   # reproducible build
-build 1: 44553bfece77f414806aa9f32098692ab1caf89740490438c0fdc41a3db892aa
-build 2: 44553bfece77f414806aa9f32098692ab1caf89740490438c0fdc41a3db892aa
+build 1: 0db6a9713a269727ff3b48d36538d0f1cc62e6d1c71af49f3b46312346d71093
+build 2: 0db6a9713a269727ff3b48d36538d0f1cc62e6d1c71af49f3b46312346d71093
 reproducible: byte-identical
 bundle matches source tree

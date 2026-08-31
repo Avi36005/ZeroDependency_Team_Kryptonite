@@ -178,13 +178,18 @@ async function main(argv) {
     if (!process.stdout.isTTY || !process.stdin.isTTY) {
       fail('tui needs an interactive terminal; use \'depx check\' for piped or CI output');
     }
+    // Both analyses run behind the scan screen, so `f`, `z` and `v` inside the
+    // interface answer all three questions without going back to a shell.
     const progress = { path, files: 0 };
-    const pending = analyze(path, {
-      include,
-      onProgress: (files) => {
-        progress.files = files;
-      },
-    });
+    const pending = Promise.all([
+      analyze(path, {
+        include,
+        onProgress: (files) => {
+          progress.files = files;
+        },
+      }),
+      verifyZeroDep(path),
+    ]);
     return runTui(pending, { progress });
   }
 

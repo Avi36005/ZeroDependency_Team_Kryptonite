@@ -127,20 +127,20 @@ printf '  snips/18-deps-proof.txt\n'
 # directly - the same pure function the live interface draws with, at a fixed
 # 76x18 so the file is stable. What you see here is what the screen shows.
 node --input-type=module - <<'JS' >snips/21-tui.txt
-import { analyze } from './src/core.mjs';
+import { analyze, verifyZeroDep } from './src/core.mjs';
 import { setColor } from './src/report.mjs';
 import { createState, renderFrame, reduce } from './src/tui.mjs';
 
 setColor(false);
 const size = { cols: 76, rows: 18 };
-const result = await analyze('fixtures/messy');
+const [result, rule] = await Promise.all([analyze('fixtures/messy'), verifyZeroDep('fixtures/messy')]);
 const trim = (s) => renderFrame(s, size).map((l) => l.replace(/\s+$/, '')).join('\n');
 const press = (s, keys) => keys.reduce((acc, k) => reduce(acc, k).state, s);
 
 const out = [];
-out.push('$ depx tui fixtures/messy');
+out.push('$ depx fixtures/messy');
 out.push('');
-const start = createState(result);
+const start = createState(result, rule);
 out.push(trim(start));
 
 out.push('');
@@ -158,6 +158,17 @@ const filtered = press(start, [
   { sequence: 'o' },
 ]);
 out.push(trim(filtered));
+
+out.push('');
+out.push('# z  the Zero Dependency rule check, without leaving the interface');
+out.push('');
+out.push(trim(press(start, [{ sequence: 'z' }])));
+
+out.push('');
+out.push('# v  the other half of that rule: source that was copied in');
+out.push('');
+out.push(trim(press(start, [{ sequence: 'v' }])));
+
 console.log(out.join('\n'));
 JS
 printf '  snips/21-tui.txt\n'

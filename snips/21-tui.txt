@@ -1,4 +1,4 @@
-$ depx tui fixtures/messy
+$ depx fixtures/messy
 
   depx · messy                                             4 files · 3 langs
   ──────────────────────────────────────────────────────────────────────────
@@ -17,7 +17,7 @@ $ depx tui fixtures/messy
   Check it against its registry: if it is not there either, this is the
   slopsquat window.
   ──────────────────────────────────────────────────────────────────────────
-  ↑↓ move   ←→ category   / search   ⏎ open   q quit
+  ↑↓←→ move  / search  ⏎ open  [f]findings  z rule  v copied  q quit
 
 # -> -> -> ->  to REPLACEABLE, then down one
 
@@ -38,7 +38,7 @@ $ depx tui fixtures/messy
   yours
 
   ──────────────────────────────────────────────────────────────────────────
-  ↑↓ move   ←→ category   / search   ⏎ open   q quit
+  ↑↓←→ move  / search  ⏎ open  [f]findings  z rule  v copied  q quit
 
 # /go  to filter the list
 
@@ -60,3 +60,45 @@ $ depx tui fixtures/messy
 
   ──────────────────────────────────────────────────────────────────────────
   /go▏  ⏎ keep   esc clear   (searches every category)
+
+# z  the Zero Dependency rule check, without leaving the interface
+
+  depx · messy  zero-dep rule                              4 files · 3 langs
+  ──────────────────────────────────────────────────────────────────────────
+  FAIL  package.json      6 runtime dependencies: chalk, minimist, uuid, …
+  FAIL  requirements.txt  4 runtime dependencies: requests, PyYAML, click…
+  FAIL  go.mod            3 runtime dependencies: github.com/google/uuid,…
+
+  the manifest is not empty
+
+
+
+
+
+
+
+
+
+  ──────────────────────────────────────────────────────────────────────────
+  f findings  [z]rule  v copied  q quit
+
+# v  the other half of that rule: source that was copied in
+
+  depx · messy  copied source                              4 files · 3 langs
+  ──────────────────────────────────────────────────────────────────────────
+
+                ✓  no copied or generated source detected
+
+                  every file here reads as hand-written
+
+
+
+
+
+
+
+
+
+
+  ──────────────────────────────────────────────────────────────────────────
+  f findings  z rule  [v]copied  q quit

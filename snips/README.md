@@ -45,7 +45,7 @@ does not. Every other tool in this category stops at the manifest.
 | [19-depxignore.txt](19-depxignore.txt) | `.depxignore` suppressing two findings while two real ones still report |
 | [14-json.txt](14-json.txt) | `--json` for CI, including warnings, suppressions and skipped projects |
 | [07-langs.txt](07-langs.txt) | twelve languages across nine adapters, and the tier each is detected at |
-| [21-tui.txt](21-tui.txt) | `depx tui` — three frames of the interactive interface |
+| [21-tui.txt](21-tui.txt) | the interface — findings, search, and the rule and vendoring views |
 | [11-help.txt](11-help.txt) | the help text |
 
 ## Receipts
@@ -54,7 +54,7 @@ does not. Every other tool in this category stops at the manifest.
 |---|---|
 | [15-performance.txt](15-performance.txt) | 6,000 files in 0.70 s |
 | [16-reproducible-build.txt](16-reproducible-build.txt) | two builds, one hash, and the bundle behaving like the source tree |
-| [17-test-suite.txt](17-test-suite.txt) | 228 tests across 54 suites |
+| [17-test-suite.txt](17-test-suite.txt) | 237 tests across 55 suites |
 | [18-deps-proof.txt](18-deps-proof.txt) | the dependency proof a judge can confirm in five seconds |
 
 ## Fixtures

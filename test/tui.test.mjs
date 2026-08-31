@@ -30,6 +30,7 @@ import {
   wrap,
   centre,
   renderScanning,
+  VIEWS,
 } from '../src/tui.mjs';
 
 const run = promisify(execFile);
@@ -389,6 +390,97 @@ describe('tui helpers', () => {
   });
 });
 
+describe('tui views', () => {
+  const RULE = {
+    root: '/tmp/demo',
+    rows: [{ language: 'JavaScript / TypeScript', manifest: 'package.json', runtimeDeps: 0, devDeps: 0, pass: true, names: [] }],
+    missing: [],
+    vendored: [],
+    pass: true,
+  };
+  const FAILING = {
+    root: '/tmp/demo',
+    rows: [{ language: 'JavaScript / TypeScript', manifest: 'package.json', runtimeDeps: 2, devDeps: 0, pass: false, names: ['chalk', 'uuid'] }],
+    missing: [{ language: 'Python', files: 3, expected: 'requirements.txt' }],
+    vendored: [{ file: 'src/bundle.js', signals: [{ id: 'minified', why: 'packs 900 characters onto one line' }] }],
+    pass: false,
+  };
+
+  test('f, z and v switch view from anywhere', () => {
+    let state = createState(SAMPLE, RULE);
+    assert.equal(state.view, 'findings');
+    state = press(state, { sequence: 'z' });
+    assert.equal(state.view, 'rule');
+    state = press(state, { sequence: 'v' });
+    assert.equal(state.view, 'copied');
+    assert.equal(press(state, { sequence: 'f' }).view, 'findings');
+  });
+
+  test('the view keys do nothing when the rule check did not run', () => {
+    const state = createState(SAMPLE, null);
+    assert.equal(press(state, { sequence: 'z' }).view, 'findings');
+    assert.equal(press(state, { sequence: 'v' }).view, 'findings');
+  });
+
+  test('every view renders at an exact frame size', () => {
+    for (const view of VIEWS) {
+      for (const [cols, rows] of [[60, 12], [78, 20], [130, 45]]) {
+        const state = press(createState(SAMPLE, FAILING), { sequence: view.key });
+        const frame = renderFrame(state, { cols, rows });
+        assert.equal(frame.length, rows, `${view.id} ${cols}x${rows} rows`);
+        assert.ok(frame.every((l) => displayWidth(l) === cols), `${view.id} ${cols}x${rows} widths`);
+      }
+    }
+  });
+
+  test('the rule view reports each manifest and what is missing', () => {
+    const state = press(createState(SAMPLE, FAILING), { sequence: 'z' });
+    const frame = renderFrame(state, { cols: 100, rows: 20 }).join('\n');
+    assert.match(frame, /FAIL\s+package\.json/);
+    assert.match(frame, /2 runtime dependencies: chalk, uuid/);
+    assert.match(frame, /FAIL\s+requirements\.txt/);
+    assert.match(frame, /missing - 3 Python files present/);
+  });
+
+  test('a passing rule says both halves were checked', () => {
+    const state = press(createState(SAMPLE, RULE), { sequence: 'z' });
+    const frame = renderFrame(state, { cols: 100, rows: 20 }).join('\n');
+    assert.match(frame, /PASS\s+package\.json/);
+    assert.match(frame, /empty manifest verified, no vendored source detected/);
+  });
+
+  test('the copied view shows the signal, not a verdict', () => {
+    const state = press(createState(SAMPLE, FAILING), { sequence: 'v' });
+    const frame = renderFrame(state, { cols: 100, rows: 20 }).join('\n');
+    assert.match(frame, /src\/bundle\.js/);
+    assert.match(frame, /packs 900 characters onto one line/);
+    assert.match(frame, /signals, not proof/);
+  });
+
+  test('a clean repository says so in the copied view too', () => {
+    const state = press(createState(SAMPLE, RULE), { sequence: 'v' });
+    assert.match(
+      renderFrame(state, { cols: 100, rows: 20 }).join('\n'),
+      /no copied or generated source detected/,
+    );
+  });
+
+  test('the footer names every view, and marks the current one', () => {
+    const frame = renderFrame(createState(SAMPLE, RULE), { cols: 100, rows: 20 }).join('\n');
+    assert.match(frame, /\[f\]findings/);
+    assert.match(frame, /z rule/);
+    assert.match(frame, /v copied/);
+  });
+
+  test('a narrow terminal drops the movement hints before the view list', () => {
+    const footer = (cols) => renderFrame(createState(SAMPLE, RULE), { cols, rows: 20 }).at(-1);
+    assert.match(footer(100), /↑↓←→ move/, 'wide enough for both');
+    const narrow = footer(60);
+    assert.doesNotMatch(narrow, /↑↓←→ move/);
+    assert.match(narrow, /z rule/, 'a key you cannot discover is a feature that does not exist');
+  });
+});
+
 describe('tui scan screen', () => {
   test('is the same shape as every other frame', () => {
     for (const [cols, rows] of [[60, 12], [78, 20], [130, 45]]) {
@@ -434,7 +526,7 @@ describe('tui scan screen', () => {
     assert.doesNotMatch(written, /GHOSTS/);
 
     progress.files = 40;
-    settle(SAMPLE);
+    settle([SAMPLE, null]); // the pair the CLI resolves: analysis, rule check
     await new Promise((r) => setImmediate(r));
     assert.match(written, /GHOSTS/, 'the report replaces it when the walk finishes');
 
@@ -454,7 +546,7 @@ describe('tui scan screen', () => {
       written += c;
     });
 
-    const done = runTui(Promise.resolve(SAMPLE), { stdin, stdout, progress: { path: '.', files: 0 } });
+    const done = runTui(Promise.resolve([SAMPLE, null]), { stdin, stdout, progress: { path: '.', files: 0 } });
     await new Promise((r) => setImmediate(r));
     stdin.write('q');
     await done;

@@ -420,6 +420,34 @@ were all suppressed is *configured*, not clean:
 
 The footer drops the keys that would do nothing.
 
+### Three views, one command
+
+The interface is the front end for every question `depx` can answer about a
+repository, not just `check`. Both analyses run behind the one scan screen, so
+switching is instant and nothing sends you back to a shell:
+
+| Key | View | Shows |
+|---|---|---|
+| `f` | findings | the six kinds of disagreement, searchable |
+| `z` | zero-dep rule | each manifest, its verdict, and any manifest that is missing |
+| `v` | copied source | the vendoring signals — the half of the rule a manifest cannot show |
+
+```
+  depx · messy  zero-dep rule                              4 files · 3 langs
+  ──────────────────────────────────────────────────────────────────────────
+  FAIL  package.json      6 runtime dependencies: chalk, minimist, uuid, …
+  FAIL  requirements.txt  4 runtime dependencies: requests, PyYAML, click…
+  FAIL  go.mod            3 runtime dependencies: github.com/google/uuid,…
+
+  the manifest is not empty
+  ──────────────────────────────────────────────────────────────────────────
+  f findings  [z]rule  v copied  q quit
+```
+
+Every view is named in the footer. On a narrow terminal the movement hints are
+dropped before the view list is, because a key you cannot discover is a feature
+that does not exist.
+
 ### Search
 
 `/` searches **every category at once**, not the open one. Three things follow
@@ -461,7 +489,7 @@ The state machine and the frame renderer are pure functions of `(state, size)`:
 rows})` returns an array of exactly `rows` strings of exactly `cols` display
 width. Only `runTui()` touches stdin, stdout or the process.
 
-That split is what makes the interface testable. Fifty-four tests drive every
+That split is what makes the interface testable. Sixty-three tests drive every
 key it responds to and assert on the resulting frames as strings, with no
 terminal involved — including that the frame stays exactly the requested size
 at four terminal sizes and through every navigation state, that the selected
@@ -719,8 +747,8 @@ byte-identical across runs:
 
 ```
 $ make verify
-build 1: 44553bfece77f414806aa9f32098692ab1caf89740490438c0fdc41a3db892aa
-build 2: 44553bfece77f414806aa9f32098692ab1caf89740490438c0fdc41a3db892aa
+build 1: %%HASH%%f414806aa9f32098692ab1caf89740490438c0fdc41a3db892aa
+build 2: %%HASH%%f414806aa9f32098692ab1caf89740490438c0fdc41a3db892aa
 reproducible: byte-identical
 bundle matches source tree
 ```
@@ -742,7 +770,7 @@ submission.
 | Target | Action |
 |---|---|
 | `make build` | syntax check and set the executable bit |
-| `make test` | run all 228 tests (`node --test`) |
+| `make test` | run all 237 tests (`node --test`) |
 | `make dist` | produce the single-file build |
 | `make verify` | build twice, compare hashes, diff behaviour against the source tree |
 | `make demo` | paced walkthrough, built to be screen-recorded (`DEMO_PAUSE=0` to run flat) |
@@ -781,7 +809,7 @@ Adding a language means adding one module to `src/lang/` and registering it in
 make test
 ```
 
-228 tests across 54 suites, using `node:test` and `node:assert/strict` with no
+237 tests across 55 suites, using `node:test` and `node:assert/strict` with no
 configuration file and no test framework. The resolution, vendoring and CLI
 suites construct throwaway projects under `os.tmpdir()` and analyse them end to
 end; 83 of those invoke `bin/depx.mjs` as a child process and assert on stdout
