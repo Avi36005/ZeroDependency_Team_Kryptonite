@@ -1,14 +1,14 @@
 $ make verify
-build 1: 390db6ea1762c96be426d27c602054cff94e7326c7b221790f1facd81cbca3d4
-build 2: 390db6ea1762c96be426d27c602054cff94e7326c7b221790f1facd81cbca3d4
+build 1: 63627deaaa5df7524059f295a07566d82d3a1312b66aad39b302e568d545995b
+build 2: 63627deaaa5df7524059f295a07566d82d3a1312b66aad39b302e568d545995b
 reproducible: byte-identical
 bundle matches source tree
 
 $ shasum -a 256 dist/depx.mjs
-390db6ea1762c96be426d27c602054cff94e7326c7b221790f1facd81cbca3d4  dist/depx.mjs
+63627deaaa5df7524059f295a07566d82d3a1312b66aad39b302e568d545995b  dist/depx.mjs
 
 $ wc -l dist/depx.mjs
-3570 dist/depx.mjs
+3632 dist/depx.mjs
 
 $ grep -c "^import .*node:" dist/depx.mjs   # every import is a builtin
 6

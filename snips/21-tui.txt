@@ -17,7 +17,7 @@ $ depx tui fixtures/messy
   Check it against its registry: if it is not there either, this is the
   slopsquat window.
   ──────────────────────────────────────────────────────────────────────────
-  ↑↓ move   ←→ category   ⏎ open   / filter   q quit
+  ↑↓ move   ←→ category   / search   ⏎ open   q quit
 
 # -> -> -> ->  to REPLACEABLE, then down one
 
@@ -38,18 +38,18 @@ $ depx tui fixtures/messy
   yours
 
   ──────────────────────────────────────────────────────────────────────────
-  ↑↓ move   ←→ category   ⏎ open   / filter   q quit
+  ↑↓ move   ←→ category   / search   ⏎ open   q quit
 
 # /go  to filter the list
 
-  depx · messy                                             4 files · 3 langs
+  depx · messy                                            2 matches for "go"
   ──────────────────────────────────────────────────────────────────────────
-    GHOSTS (3)          │ › github.com/google/uuid         gosrc/main.go:7:2
-    BROKEN (1)          │
-    PHANTOM (1)         │
-    UNDECLARED (2)      │
-  ▸ REPLACEABLE (6)     │
-    DEAD (4)            │
+    GHOSTS (0/3)        │ › github.com/google/uuid         gosrc/main.go:7:2
+    BROKEN (0/1)        │
+    PHANTOM (0/1)       │
+    UNDECLARED (0/2)    │
+  ▸ REPLACEABLE (1/6)   │
+    DEAD (1/4)          │
                         │
                         │
                         │
@@ -59,4 +59,4 @@ $ depx tui fixtures/messy
 
 
   ──────────────────────────────────────────────────────────────────────────
-  /go▏  ⏎ keep   esc clear
+  /go▏  ⏎ keep   esc clear   (searches every category)
