@@ -19,6 +19,8 @@ import { setColor, displayWidth } from '../src/report.mjs';
 import {
   runTui,
   createState,
+  matchesIn,
+  totalMatches,
   reduce,
   visible,
   selected,
@@ -160,6 +162,78 @@ describe('tui filter', () => {
     state = press(state, { sequence: '/' }, { sequence: 'a' }, 'return');
     assert.equal(state.item, 0);
     assert.ok(selected(state));
+  });
+});
+
+describe('tui search', () => {
+  // The four SAMPLE findings span three categories. "a" hits two of them:
+  // async-retry-utils and json-schema-validator-pro (ghost) and chalk
+  // (replaceable). "moment" has no 'a' in it, so dead matches nothing.
+  const search = (state, text) =>
+    press(createState(state), { sequence: '/' }, ...[...text].map((ch) => ({ sequence: ch })));
+
+  test('the filter applies to every category, not just the open one', () => {
+    const state = search(SAMPLE, 'a');
+    assert.equal(matchesIn(state, 0).length, 2, 'ghosts');
+    assert.equal(matchesIn(state, 1).length, 1, 'replaceable');
+    assert.equal(matchesIn(state, 2).length, 0, 'dead');
+    assert.equal(totalMatches(state), 3);
+  });
+
+  test('typing jumps to wherever the match is', () => {
+    // "chalk" is a replaceable; the search starts on ghosts and has to move.
+    const state = search(SAMPLE, 'chalk');
+    assert.equal(state.groups[state.cat].type, 'replaceable');
+    assert.equal(selected(state).name, 'chalk');
+  });
+
+  test('a search that matches nothing leaves you where you were', () => {
+    const state = search(SAMPLE, 'zzzz');
+    assert.equal(totalMatches(state), 0);
+    assert.equal(state.groups[state.cat].type, 'ghost');
+    assert.equal(selected(state), null);
+  });
+
+  test('arrows skip the categories a search emptied', () => {
+    // "moment" is only in dead, so left and right both stay put.
+    const state = press(search(SAMPLE, 'moment'), 'return');
+    assert.equal(state.groups[state.cat].type, 'dead');
+    assert.equal(press(state, 'right').groups[press(state, 'right').cat].type, 'dead');
+    assert.equal(press(state, 'left').groups[press(state, 'left').cat].type, 'dead');
+  });
+
+  test('arrows visit every category once the search is cleared', () => {
+    // the search left us on dead; clearing it puts the other two back in reach
+    const cleared = press(search(SAMPLE, 'moment'), 'escape');
+    assert.equal(cleared.filter, '');
+    const at = (s) => s.groups[s.cat].type;
+    assert.equal(at(cleared), 'dead');
+    assert.equal(at(press(cleared, 'right')), 'ghost');
+    assert.equal(at(press(cleared, 'right', 'right')), 'replaceable');
+    assert.equal(at(press(cleared, 'right', 'right', 'right')), 'dead');
+  });
+
+  test('each category shows its own share of the matches', () => {
+    const frame = renderFrame(search(SAMPLE, 'a'), { cols: 90, rows: 20 }).join('\n');
+    assert.match(frame, /GHOSTS \(2\/2\)/);
+    assert.match(frame, /REPLACEABLE \(1\/1\)/);
+    assert.match(frame, /DEAD \(0\/1\)/);
+  });
+
+  test('a category with no matches says 0 rather than hiding', () => {
+    const frame = renderFrame(search(SAMPLE, 'chalk'), { cols: 90, rows: 20 }).join('\n');
+    assert.match(frame, /GHOSTS \(0\/2\)/);
+    assert.match(frame, /REPLACEABLE \(1\/1\)/);
+  });
+
+  test('the header counts the matches instead of the files', () => {
+    const one = renderFrame(search(SAMPLE, 'chalk'), { cols: 90, rows: 20 }).join('\n');
+    assert.match(one, /1 match for "chalk"/);
+    const many = renderFrame(search(SAMPLE, 'a'), { cols: 90, rows: 20 }).join('\n');
+    assert.match(many, /3 matches for "a"/);
+    // and goes back to the file count when the search is cleared
+    const cleared = renderFrame(press(search(SAMPLE, 'a'), 'escape'), { cols: 90, rows: 20 }).join('\n');
+    assert.match(cleared, /4 files · 1 lang/);
   });
 });
 
@@ -354,6 +428,19 @@ describe('tui end to end', () => {
     assert.equal(failed.code, 2);
     assert.match(failed.stderr, /needs an interactive terminal/);
     assert.match(failed.stderr, /depx check/);
+  });
+
+  test('bare depx stays the batch report when there is no terminal', async () => {
+    // node:test gives the child pipes, which is the case being asserted: the
+    // interface only appears for a person, never for a script.
+    const { stdout } = await run('node', [join(REPO, 'bin/depx.mjs'), '--no-color'], { cwd: REPO });
+    assert.match(stdout, /scanned \d+ files/);
+    assert.doesNotMatch(stdout, /q quit/, 'no interface chrome reached the pipe');
+  });
+
+  test('--json and --quiet keep the report even on a terminal', async () => {
+    const { stdout } = await run('node', [join(REPO, 'bin/depx.mjs'), '--json'], { cwd: REPO });
+    assert.doesNotThrow(() => JSON.parse(stdout));
   });
 
   test('tui is listed in the help', async () => {
