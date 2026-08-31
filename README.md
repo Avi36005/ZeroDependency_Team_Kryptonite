@@ -12,9 +12,26 @@ dependency manifest.
 
 ---
 
+**Zero Dependency 2026 · Team Kryptonite · Track A — Developer Tools & CLI**
+
+| | |
+|---|---|
+| Build | `make build` (one command; nothing is downloaded or compiled) |
+| Manifest | [`package.json`](package.json) — `"dependencies": {}`, no `node_modules` |
+| Proof | [`deps-proof.txt`](deps-proof.txt), regenerate with `make proof` |
+| Substitutions | [`STDLIB.md`](STDLIB.md) — 16 packages replaced with the standard library |
+| Bonuses claimed | Reproducible Build (`make verify`) · Package Killer · STDLIB Log |
+| Licence | MIT |
+
+Everything in `src/`, `bin/`, `test/` and `tools/` was written during the event
+window. No third-party source is vendored; `depx vendored .` checks that claim
+against this repository itself.
+
+---
+
 ## Contents
 
-- [Overview](#overview)
+- [Overview](#overview) — the problem, in plain terms
 - [Installation](#installation)
 - [Quick start](#quick-start)
 - [Usage](#usage)
@@ -34,41 +51,101 @@ dependency manifest.
 
 ### The problem
 
-Large language models invent dependencies. A 2025 USENIX Security study of
-576,000 generated code samples found that **19.7% of the packages the models
-recommended did not exist**. The invented names repeat, so an attacker can
-register them in advance and wait — a supply-chain attack in which the victim
-never makes a typo.
+**Large language models invent packages that do not exist.**
 
-The same class of defect predates AI. An import can work locally only because
-another package dragged its dependency into the install tree, then fail the
-moment CI performs a clean checkout.
+A 2025 USENIX Security study fed 576,000 AI-generated code samples through a
+checker and found that **19.7% of the packages the models recommended were not
+real**. Not typos — inventions.
 
-Both are cases of source and manifest disagreeing, and both are visible
-statically.
+The dangerous part is that the inventions *repeat*. Ask ten models for an HTTP
+retry helper and a good number will reach for the same plausible-sounding name.
+So an attacker does not need to guess: they read what the models suggest,
+register those names on the registry first, and wait. You run `npm install`,
+the name resolves, and their code is now in your build.
+
+You never made a mistake. The model did, and the attacker was already there.
+The industry calls this **slopsquatting**, and it is the first supply-chain
+attack where the victim types everything correctly.
+
+The same defect predates AI, in a quieter form: an import works on your machine
+only because some other package happened to drag its dependency into
+`node_modules`, then fails the first time CI does a clean checkout.
+
+**Both are the same bug — the code and the manifest disagree — and both are
+visible without running anything.**
 
 ### What depx does
 
-`depx` scans a project's source files, extracts every import specifier, and
-resolves each against the manifest and the install tree. It reports six kinds
-of disagreement, each labelled with the confidence the available evidence
-supports.
+It reads two things and compares them:
 
-It also verifies a repository against the Zero Dependency rule — an empty
-runtime manifest — including the half of that rule a manifest cannot show:
-whether the source was written or copied.
+- what your **source code imports**
+- what your **manifest declares** (and what is actually installed)
 
-### Scope of its claims
+Then it reports every place they disagree, in six kinds:
 
-`depx` performs static analysis against local evidence only. It can establish
-that an import resolves to nothing **in the project being analysed**. It
-cannot establish that a package does not exist anywhere, because that would
-require a copy of the registry index — precisely the kind of dependency this
-tool exists without.
+| Finding | In plain English | Why you care |
+|---|---|---|
+| **ghost** | You import it, and nothing here provides it. | The build breaks on a clean checkout. **This is the slopsquat case.** |
+| **broken** | You import a file that is not on disk. | Same, and not a judgement call. |
+| **phantom** | You use it but never declared it. | Works today; breaks the moment that transitive dependency moves. |
+| **undeclared** | Not declared, and there is no evidence here to judge it further. | Deliberately low-confidence — see below. |
+| **replaceable** | The standard library already ships this. | Delete a dependency for free. |
+| **dead** | Declared, never imported. | Dead weight in your install and your audit surface. |
 
-Findings are therefore worded to match the evidence. Where a name looks
-invented, `depx` reports that nothing local provides it and leaves the
-registry lookup to the reader.
+Twelve languages, one pass, entirely offline. It also verifies a repository
+against this event's Zero Dependency rule — including the half a manifest
+cannot show: whether the source was **written or copied in**.
+
+### What it does not claim
+
+This is the part worth reading, because it is where most tools in this category
+overreach.
+
+`depx` is offline by design. It can prove an import **resolves to nothing in
+the project in front of it**. It cannot prove a package exists nowhere on
+earth — that would need a copy of the registry index, which is exactly the kind
+of dependency this tool exists without.
+
+So the findings are worded to match the evidence. A name that looks invented is
+reported as *"nothing local provides this"*, and the registry lookup is left to
+you. `undeclared` exists as a separate, deliberately weaker finding for exactly
+the cases where the evidence does not support calling something a ghost.
+
+A false ghost is the worst error this tool can make — it sends someone hunting a
+supply-chain compromise that is not there — so the whole design leans away from
+it. See [Exclusions](#exclusions).
+
+### The twist
+
+**It is a tool that finds dependency problems, and it has zero dependencies
+itself.**
+
+No `npm install`. No `node_modules`. An empty `dependencies` object. Everything
+that would normally have been a package — a JavaScript parser, a TOML reader,
+`chalk`, `minimist`, a glob library, a test framework, a bundler, and an entire
+interactive terminal UI that would usually mean React and a WebAssembly layout
+engine — is written against Node's standard library instead. All sixteen
+substitutions are documented, with the reasoning, in [`STDLIB.md`](STDLIB.md).
+
+### Verify all of that in 60 seconds
+
+```sh
+cat package.json                     # "dependencies": {}
+ls node_modules                      # No such file or directory
+make test                            # 217 tests, no test framework
+node bin/depx.mjs zero-dep .         # the tool's verdict on itself
+make verify                          # two builds, byte-identical
+```
+
+And to see it actually working:
+
+```sh
+node bin/depx.mjs check fixtures/messy   # a broken project, all six findings
+cd fixtures/messy && node ../../bin/depx.mjs tui   # the interactive interface
+```
+
+Or read [`deps-proof.txt`](deps-proof.txt), which is all of the above captured
+in one file.
 
 ---
 
@@ -103,8 +180,23 @@ only imports are Node built-ins. The build is deterministic; see
 
 ### Invocation
 
-This document writes `depx` for brevity. Unless the executable is linked onto
-`PATH` with `npm link`, invoke it as `node bin/depx.mjs`.
+This document writes `depx` for brevity. Out of the box, invoke it as
+`node bin/depx.mjs`.
+
+To get the short form, symlink the entry point onto your `PATH`:
+
+```sh
+ln -s "$PWD/bin/depx.mjs" ~/.local/bin/depx    # or any directory on your PATH
+depx --version
+```
+
+A symlink rather than `npm link`, deliberately: `npm link` would create a
+`node_modules` directory in a repository whose entire claim is that it does not
+have one.
+
+With that in place, `depx` on its own in a terminal opens the
+[interactive interface](#the-interactive-interface); everywhere else it is the
+batch report.
 
 ---
 
@@ -185,7 +277,7 @@ by walking up from the file.
 | Command | Reports |
 |---|---|
 | `check [path]` | all findings (default) |
-| `tui [path]` | the same findings, browsable — see [below](#the-interactive-interface) |
+| `tui [path]` | the same findings, browsable — also what bare `depx` opens in a terminal |
 | `ghosts [path]` | imports that nothing in the project resolves |
 | `phantom [path]` | imports installed but never declared |
 | `dead [path]` | declared packages that are never imported |
@@ -239,7 +331,13 @@ source — using the runner's Node and installing nothing.
 
 The report is built to be read once, in CI or in a scrollback buffer. On a
 repository with fifty findings it is a wall. `depx tui` renders the same
-analysis as a screen you can move around in:
+analysis as a screen you can move around in — and typing `depx` on its own in a
+terminal opens it:
+
+```sh
+cd your-project
+depx
+```
 
 ```
   depx · messy                                             4 files · 3 langs
@@ -267,17 +365,38 @@ analysis as a screen you can move around in:
 | `↑` `↓` / `k` `j` | move through the findings in the selected category |
 | `←` `→` / `h` `l` / `tab` | change category; the list wraps in both directions |
 | `g` / `G` | first / last finding |
-| `/` | filter by name — `⏎` keeps the filter, `esc` clears it |
+| `/` | search — see below |
 | `⏎` | open the file at the line in `$VISUAL` or `$EDITOR` |
 | `q` / `esc` / `ctrl-c` | quit |
 
+### Search
+
+`/` searches **every category at once**, not the open one. Three things follow
+from that, and together they are what makes it a search rather than a filter:
+
+- Typing moves you to wherever the match is. Searching `chalk` from the ghosts
+  pane lands on REPLACEABLE, because that is where `chalk` is.
+- Every category carries its own share of the matches — `GHOSTS (0/3)`,
+  `REPLACEABLE (2/6)` — so the result is visible before you navigate to it, and
+  the header counts the total.
+- `←` `→` skip the categories the search emptied, so arrowing across walks the
+  results instead of stopping on blank panes.
+
+`⏎` keeps the search and returns to the list; `esc` clears it.
+
+### Where it runs
+
+Bare `depx` opens the interface **only when both ends are a terminal**. In a
+pipe, a redirect, a CI job, or with `--json` or `--quiet`, it is the batch
+report exactly as before — and any explicit subcommand always is. `depx tui`
+asked for directly in a pipe exits `2` and names `depx check`.
+
+The rule that decides this is that a script's behaviour must never depend on
+where its output is going. Only the no-argument interactive case changes, which
+is the one case where a person is definitely watching.
+
 The exit code is the one `depx check` would have returned, so quitting the
 interface still answers the question a script would have asked.
-
-`tui` needs a terminal on both ends. Piped or redirected, it exits `2` and
-names `depx check` rather than quietly rendering something else — CI wants the
-batch report, and a command that changes what it does based on where its output
-is going is a command you cannot trust in a script.
 
 ### How it is tested
 
@@ -286,12 +405,13 @@ The state machine and the frame renderer are pure functions of `(state, size)`:
 rows})` returns an array of exactly `rows` strings of exactly `cols` display
 width. Only `runTui()` touches stdin, stdout or the process.
 
-That split is what makes the interface testable. Thirty-three tests drive every
+That split is what makes the interface testable. Forty-three tests drive every
 key it responds to and assert on the resulting frames as strings, with no
 terminal involved — including that the frame stays exactly the requested size
 at four terminal sizes and through every navigation state, that the selected
-row is marked without relying on colour, and that the alternate screen is
-always left again on the way out.
+row is marked without relying on colour, that a search reaches every category
+and reports its per-category counts, that the alternate screen is always left
+again on the way out, and that bare `depx` in a pipe is still the report.
 
 ---
 
@@ -543,8 +663,8 @@ byte-identical across runs:
 
 ```
 $ make verify
-build 1: 390db6ea1762c96be426d27c602054cff94e7326c7b221790f1facd81cbca3d4
-build 2: 390db6ea1762c96be426d27c602054cff94e7326c7b221790f1facd81cbca3d4
+build 1: 63627deaaa5df7524059f295a07566d82d3a1312b66aad39b302e568d545995b
+build 2: 63627deaaa5df7524059f295a07566d82d3a1312b66aad39b302e568d545995b
 reproducible: byte-identical
 bundle matches source tree
 ```
@@ -566,7 +686,7 @@ submission.
 | Target | Action |
 |---|---|
 | `make build` | syntax check and set the executable bit |
-| `make test` | run all 207 tests (`node --test`) |
+| `make test` | run all 217 tests (`node --test`) |
 | `make dist` | produce the single-file build |
 | `make verify` | build twice, compare hashes, diff behaviour against the source tree |
 | `make demo` | paced walkthrough, built to be screen-recorded (`DEMO_PAUSE=0` to run flat) |
@@ -605,10 +725,10 @@ Adding a language means adding one module to `src/lang/` and registering it in
 make test
 ```
 
-207 tests across 52 suites, using `node:test` and `node:assert/strict` with no
+217 tests across 53 suites, using `node:test` and `node:assert/strict` with no
 configuration file and no test framework. The resolution, vendoring and CLI
 suites construct throwaway projects under `os.tmpdir()` and analyse them end to
-end; 79 of those invoke `bin/depx.mjs` as a child process and assert on stdout
+end; 81 of those invoke `bin/depx.mjs` as a child process and assert on stdout
 and the exit code, exercising the walker, the manifest readers, the report and
 the exit codes exactly as a user or CI job would.
 
