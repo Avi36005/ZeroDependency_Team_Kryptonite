@@ -1,5 +1,8 @@
 // Terminal output: colour, width-aware padding and the report layout.
 //
+// HEADINGS and ORDER are exported because src/tui.mjs renders the same
+// findings interactively; one table means the two interfaces cannot drift.
+//
 // Replaces: `chalk`, `picocolors`, `string-width`, `cli-table3`, `boxen`.
 // Colour comes from util.styleText, which already consults NO_COLOR and
 // whether the stream is a TTY, so we do not reimplement that policy.
@@ -25,6 +28,7 @@ export const c = {
   green: (s) => paint('green', s),
   cyan: (s) => paint('cyan', s),
   magenta: (s) => paint('magenta', s),
+  inverse: (s) => paint('inverse', s),
 };
 
 const ANSI_PATTERN = /\u001b\[[0-9;]*m/g;
@@ -82,7 +86,7 @@ export function columns(rows, gutter = 2) {
   );
 }
 
-const HEADINGS = {
+export const HEADINGS = {
   // "Resolves to nothing here" is what the evidence supports. Proving a name
   // does not exist anywhere would need a registry index we deliberately do
   // not ship, so the label claims non-resolution, not non-existence.
@@ -94,7 +98,7 @@ const HEADINGS = {
   dead: { label: 'DEAD', blurb: 'declared, never imported', paint: c.dim },
 };
 
-const ORDER = ['ghost', 'broken', 'phantom', 'undeclared', 'replaceable', 'dead'];
+export const ORDER = ['ghost', 'broken', 'phantom', 'undeclared', 'replaceable', 'dead'];
 
 export function renderReport(result, { only = null } = {}) {
   const out = [];
