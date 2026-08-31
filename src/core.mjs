@@ -26,7 +26,11 @@ import { loadIgnoreRules, applyIgnoreRules } from './ignore.mjs';
 const MAX_SOURCE_BYTES = 2 * 1024 * 1024;
 
 export async function analyze(root, options = {}) {
-  const { include = null, maxBytes = MAX_SOURCE_BYTES } = options;
+  // onProgress is called with the running file count as the walk proceeds, so
+  // a caller can show what is happening on a tree big enough to notice. It is
+  // deliberately just a number: throttling the redraw is the caller's problem,
+  // not something the analysis should slow itself down guessing at.
+  const { include = null, maxBytes = MAX_SOURCE_BYTES, onProgress = null } = options;
   const { absRoot, singleFile } = await resolveTarget(root);
 
   /** @type {Map<string, {lang: any, files: string[], imports: Map<string, Array>, relatives: Array, locals: Set<string>}>} */
@@ -41,6 +45,7 @@ export async function analyze(root, options = {}) {
     : walk(absRoot, { boundaries, skipped: skippedProjects });
 
   for await (const file of files) {
+    onProgress?.(filesScanned, file.path);
     const lang = languageForFile(file.path);
     if (!lang) continue;
     if (include && !include.includes(lang.id)) continue;

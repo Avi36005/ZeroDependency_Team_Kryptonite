@@ -268,6 +268,39 @@ function detailLines(state, width, height) {
 }
 
 /**
+ * The frame shown while the walk is still running. Same chrome as every other
+ * frame, so the interface does not jump when the results arrive.
+ */
+export function renderScanning({ path, files = 0, done = false }, { cols, rows }) {
+  if (cols < MIN_COLS || rows < MIN_ROWS) return [fit('  scanning…', cols)];
+
+  const inner = cols - 2;
+  const rule = c.dim('  ' + '─'.repeat(inner));
+  const out = [];
+
+  out.push('  ' + c.bold(fit(`depx · ${basename(path || '.')}`, inner)));
+  out.push(rule);
+
+  const body = rows - 4;
+  // A spinner would be decoration; the file count is the actual evidence that
+  // something is happening, so that is what moves.
+  const panel = [
+    ' '.repeat(inner),
+    centre(done ? c.green('✓  scanned') : c.cyan('scanning…'), inner),
+    ' '.repeat(inner),
+    centre(c.dim(`${files} file${files === 1 ? '' : 's'}`), inner),
+    ' '.repeat(inner),
+    centre(c.dim(path || '.'), inner),
+  ];
+  const lead = Math.max(0, Math.floor((body - panel.length) / 3));
+  for (let i = 0; i < body; i++) out.push('  ' + (panel[i - lead] ?? ' '.repeat(inner)));
+
+  out.push(rule);
+  out.push('  ' + c.dim(fit('reading every import and resolving it against the manifest', inner)));
+  return out.slice(0, rows);
+}
+
+/**
  * One frame, as an array of exactly `rows` lines each exactly `cols` wide.
  * Pure: the same state and size always produce the same frame, which is what
  * makes the suite able to assert on the interface.
@@ -455,7 +488,47 @@ export function editorCommand(editor, file, line) {
  * written here is undone in finish() - including on a crash, which is why the
  * restore runs from a finally and not from the quit path.
  */
-export function runTui(result, { stdin = process.stdin, stdout = process.stdout } = {}) {
+export function runTui(source, { stdin = process.stdin, stdout = process.stdout, progress = null } = {}) {
+  // `source` is either a result or a promise of one. Given a promise, the scan
+  // screen is drawn first and the interface takes over when it settles - which
+  // on a small project is a flicker, and on a large one is the only feedback
+  // there is.
+  const pending = typeof source?.then === 'function' ? source : null;
+  if (!pending) return drive(source, { stdin, stdout });
+
+  return new Promise((resolve, reject) => {
+    const size = () => ({ cols: stdout.columns || 80, rows: stdout.rows || 24 });
+    const paint = (done) =>
+      stdout.write(
+        '\x1b[H' +
+          renderScanning({ path: progress?.path, files: progress?.files ?? 0, done }, size())
+            .map((l) => l + '\x1b[K')
+            .join('\r\n') +
+          '\x1b[J',
+      );
+
+    stdout.write(ALT_ON);
+    paint(false);
+    // Redraw on a timer rather than per file: the walk reports thousands of
+    // times on a large tree, and a terminal cannot show that and should not try.
+    const tick = setInterval(() => paint(false), 80);
+    if (typeof tick.unref === 'function') tick.unref();
+
+    pending.then(
+      (result) => {
+        clearInterval(tick);
+        resolve(drive(result, { stdin, stdout, alreadyOnAltScreen: true }));
+      },
+      (error) => {
+        clearInterval(tick);
+        stdout.write(ALT_OFF);
+        reject(error);
+      },
+    );
+  });
+}
+
+function drive(result, { stdin, stdout, alreadyOnAltScreen = false }) {
   return new Promise((resolve) => {
     let state = createState(result);
     let closed = false;
@@ -530,7 +603,7 @@ export function runTui(result, { stdin = process.stdin, stdout = process.stdout 
     stdin.resume();
     stdin.on('keypress', onKey);
     stdout.on('resize', draw);
-    stdout.write(ALT_ON);
+    if (!alreadyOnAltScreen) stdout.write(ALT_ON);
     draw();
   });
 }

@@ -369,6 +369,32 @@ depx ./some/project  # that one
 | `⏎` | open the file at the line in `$VISUAL` or `$EDITOR` |
 | `q` / `esc` / `ctrl-c` | quit |
 
+### While it is working
+
+The interface owns the screen from the first frame, so the walk runs behind a
+scan display rather than in front of a blank terminal:
+
+```
+  depx · messy
+  ──────────────────────────────────────────────────────────────────────
+                                 scanning…
+
+                                 1284 files
+
+                               fixtures/messy
+  ──────────────────────────────────────────────────────────────────────
+  reading every import and resolving it against the manifest
+```
+
+The count is the real file count from the walk, reported through an
+`onProgress` callback on `analyze()`. There is no spinner and no artificial
+delay: on a small project the screen is a flicker of a few tens of
+milliseconds, and on 4,000 files it is up for about 0.4 seconds. Making it
+linger would mean making the tool slower to look busier.
+
+The redraw is on an 80 ms timer rather than per file, because a large tree
+reports thousands of times and a terminal cannot show that.
+
 ### When there is nothing to browse
 
 A clean repository has no list to arrow through, and a screen of empty rows
@@ -435,7 +461,7 @@ The state machine and the frame renderer are pure functions of `(state, size)`:
 rows})` returns an array of exactly `rows` strings of exactly `cols` display
 width. Only `runTui()` touches stdin, stdout or the process.
 
-That split is what makes the interface testable. Forty-nine tests drive every
+That split is what makes the interface testable. Fifty-four tests drive every
 key it responds to and assert on the resulting frames as strings, with no
 terminal involved — including that the frame stays exactly the requested size
 at four terminal sizes and through every navigation state, that the selected
@@ -693,8 +719,8 @@ byte-identical across runs:
 
 ```
 $ make verify
-build 1: 26de8d1bd5fb05d17a12f3fb376bc6f9d4cf17cc0435f10378033f95a5110eb9
-build 2: 26de8d1bd5fb05d17a12f3fb376bc6f9d4cf17cc0435f10378033f95a5110eb9
+build 1: 44553bfece77f414806aa9f32098692ab1caf89740490438c0fdc41a3db892aa
+build 2: 44553bfece77f414806aa9f32098692ab1caf89740490438c0fdc41a3db892aa
 reproducible: byte-identical
 bundle matches source tree
 ```
@@ -716,7 +742,7 @@ submission.
 | Target | Action |
 |---|---|
 | `make build` | syntax check and set the executable bit |
-| `make test` | run all 223 tests (`node --test`) |
+| `make test` | run all 228 tests (`node --test`) |
 | `make dist` | produce the single-file build |
 | `make verify` | build twice, compare hashes, diff behaviour against the source tree |
 | `make demo` | paced walkthrough, built to be screen-recorded (`DEMO_PAUSE=0` to run flat) |
@@ -755,7 +781,7 @@ Adding a language means adding one module to `src/lang/` and registering it in
 make test
 ```
 
-223 tests across 53 suites, using `node:test` and `node:assert/strict` with no
+228 tests across 54 suites, using `node:test` and `node:assert/strict` with no
 configuration file and no test framework. The resolution, vendoring and CLI
 suites construct throwaway projects under `os.tmpdir()` and analyse them end to
 end; 83 of those invoke `bin/depx.mjs` as a child process and assert on stdout

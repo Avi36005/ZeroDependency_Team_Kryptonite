@@ -169,9 +169,8 @@ async function main(argv) {
     return exitCode;
   }
 
-  const result = await analyze(path, { include });
-  const only = { ghosts: 'ghost', phantom: 'phantom', dead: 'dead', replace: 'replaceable' }[command] ?? null;
-
+  // The interface owns the screen from the first frame, so the analysis runs
+  // behind its scan display rather than in front of a blank terminal.
   if (command === 'tui') {
     // An interactive screen needs a terminal on both ends. Rather than
     // silently rendering something else, say so and name the command that
@@ -179,8 +178,18 @@ async function main(argv) {
     if (!process.stdout.isTTY || !process.stdin.isTTY) {
       fail('tui needs an interactive terminal; use \'depx check\' for piped or CI output');
     }
-    return runTui(result);
+    const progress = { path, files: 0 };
+    const pending = analyze(path, {
+      include,
+      onProgress: (files) => {
+        progress.files = files;
+      },
+    });
+    return runTui(pending, { progress });
   }
+
+  const result = await analyze(path, { include });
+  const only = { ghosts: 'ghost', phantom: 'phantom', dead: 'dead', replace: 'replaceable' }[command] ?? null;
 
   if (values.json) {
     process.stdout.write(JSON.stringify(toJson(result, only), null, 2) + '\n');

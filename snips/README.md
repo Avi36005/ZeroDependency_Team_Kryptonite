@@ -54,7 +54,7 @@ does not. Every other tool in this category stops at the manifest.
 |---|---|
 | [15-performance.txt](15-performance.txt) | 6,000 files in 0.70 s |
 | [16-reproducible-build.txt](16-reproducible-build.txt) | two builds, one hash, and the bundle behaving like the source tree |
-| [17-test-suite.txt](17-test-suite.txt) | 223 tests across 53 suites |
+| [17-test-suite.txt](17-test-suite.txt) | 228 tests across 54 suites |
 | [18-deps-proof.txt](18-deps-proof.txt) | the dependency proof a judge can confirm in five seconds |
 
 ## Fixtures

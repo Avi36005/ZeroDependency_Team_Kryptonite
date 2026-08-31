@@ -29,6 +29,7 @@ import {
   fit,
   wrap,
   centre,
+  renderScanning,
 } from '../src/tui.mjs';
 
 const run = promisify(execFile);
@@ -385,6 +386,80 @@ describe('tui helpers', () => {
     assert.deepEqual(editorCommand('code', 'a.ts', 9), { bin: 'code', args: ['-g', 'a.ts:9'] });
     assert.deepEqual(editorCommand('code --wait', 'a.ts', 9), { bin: 'code', args: ['--wait', '-g', 'a.ts:9'] });
     assert.deepEqual(editorCommand('subl', 'a.rb', 4), { bin: 'subl', args: ['a.rb'] });
+  });
+});
+
+describe('tui scan screen', () => {
+  test('is the same shape as every other frame', () => {
+    for (const [cols, rows] of [[60, 12], [78, 20], [130, 45]]) {
+      const frame = renderScanning({ path: 'demo', files: 12 }, { cols, rows });
+      assert.equal(frame.length, rows, `${cols}x${rows} rows`);
+      assert.ok(frame.every((l) => displayWidth(l) === cols), `${cols}x${rows} widths`);
+    }
+  });
+
+  test('shows the running count and where it is looking', () => {
+    const frame = renderScanning({ path: 'fixtures/messy', files: 1284 }, { cols: 78, rows: 16 }).join('\n');
+    assert.match(frame, /scanning…/);
+    assert.match(frame, /1284 files/);
+    assert.match(frame, /fixtures\/messy/);
+  });
+
+  test('counts one file without an s', () => {
+    const frame = renderScanning({ path: 'x', files: 1 }, { cols: 78, rows: 16 }).join('\n');
+    assert.match(frame, /\b1 file\b/);
+    assert.doesNotMatch(frame, /1 files/);
+  });
+
+  test('a pending analysis draws the scan screen, then the report', async () => {
+    const stdin = new PassThrough();
+    stdin.isTTY = false;
+    const stdout = new PassThrough();
+    stdout.columns = 90;
+    stdout.rows = 24;
+    let written = '';
+    stdout.on('data', (c) => {
+      written += c;
+    });
+
+    const progress = { path: 'demo', files: 0 };
+    let settle;
+    const pending = new Promise((r) => {
+      settle = r;
+    });
+
+    const done = runTui(pending, { stdin, stdout, progress });
+    await new Promise((r) => setImmediate(r));
+    assert.match(written, /scanning…/, 'scan screen is up while the walk runs');
+    assert.doesNotMatch(written, /GHOSTS/);
+
+    progress.files = 40;
+    settle(SAMPLE);
+    await new Promise((r) => setImmediate(r));
+    assert.match(written, /GHOSTS/, 'the report replaces it when the walk finishes');
+
+    stdin.write('q');
+    assert.equal(await done, 1);
+    assert.ok(written.endsWith('\x1b[?1049l'), 'and the terminal is still put back');
+  });
+
+  test('the alternate screen is entered once, not twice', async () => {
+    const stdin = new PassThrough();
+    stdin.isTTY = false;
+    const stdout = new PassThrough();
+    stdout.columns = 90;
+    stdout.rows = 24;
+    let written = '';
+    stdout.on('data', (c) => {
+      written += c;
+    });
+
+    const done = runTui(Promise.resolve(SAMPLE), { stdin, stdout, progress: { path: '.', files: 0 } });
+    await new Promise((r) => setImmediate(r));
+    stdin.write('q');
+    await done;
+    const entries = written.split('\x1b[?1049h').length - 1;
+    assert.equal(entries, 1, 'a second enter would clear the screen and flicker');
   });
 });
 
